@@ -1,0 +1,5 @@
+version: "0.1.0"
+description: Digital filters for signal processing
+url: https://github.com/espressif/idf-extra-components/tree/master/filters
+dependencies:
+  idf: ">=4.4"
