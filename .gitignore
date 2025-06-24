@@ -9,3 +9,4 @@ dependencies.lock
 doxygen/
 .cache
 warnings.txt
+**/docs/book/**
