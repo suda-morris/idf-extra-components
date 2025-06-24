@@ -22,7 +22,7 @@ jobs:
         run: |
           python3 ./.github/build_docs.py
 
-      # Deploy to gh-pages branch for master branch pushes
+      # Deploy to gh-pages branch only for master pushes
       - name: Deploy to Github Pages 🚀
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: JamesIves/github-pages-deploy-action@releases/v3
@@ -30,29 +30,3 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: gh-pages
           FOLDER: ./public
-
-      # Deploy PR previews to a different branch named pr-preview-{PR number}
-      - name: Deploy PR Preview 🔍
-        if: github.event_name == 'pull_request'
-        uses: JamesIves/github-pages-deploy-action@releases/v3
-        with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: pr-preview-${{ github.event.pull_request.number }}
-          FOLDER: ./public
-
-      # Add comment to PR with preview link
-      - name: Comment PR with Preview Link 🔗
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const { issue: { number: issue_number }, repo: { owner, repo } } = context;
-            const previewUrl = `https://${owner}.github.io/${repo}/pr-preview-${issue_number}/`;
-
-            github.issues.createComment({
-              issue_number,
-              owner,
-              repo,
-              body: `📝 Documentation preview is ready!\n\nYou can view the preview here: [Documentation Preview](${previewUrl})\n\nThis preview will update automatically as you make changes to the PR.`
-            });
