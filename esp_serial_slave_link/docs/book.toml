@@ -1,0 +1,7 @@
+[book]
+title = "ESP Serial Slave Link Programming Guide"
+language = "en"
+
+[output.html]
+default-theme = "light"
+site-url = "/idf-extra-components/esp_serial_slave_link/"
