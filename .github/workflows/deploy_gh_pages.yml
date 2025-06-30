@@ -1,17 +1,29 @@
 name: Build and Deploy Programming Guides
+
 on:
   push:
     branches: [master]
   pull_request:
     branches: [master]
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
-  build-docs:
+  build-and-deploy:
     runs-on: ubuntu-latest
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
+    # Set up GitHub Pages environment only for pushes to master
+    environment:
+      name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && 'github-pages' || '' }}
+      url: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && '${{ steps.deployment.outputs.page_url }}/latest/' || '' }}
     steps:
       - name: Checkout 🛎️
-        uses: actions/checkout@master
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -44,23 +56,25 @@ jobs:
           # Fail the action if broken links are found
           fail: true
 
-      # For merge events, prepare files for deployment by copying directly to docs_to_public/latest
-      - name: Prepare files for deployment 📁
+      # The following steps only run on push to master branch
+      - name: Setup Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/configure-pages@v5
+
+      - name: Prepare docs directory structure
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: |
-          # Create docs_to_public/latest directory
-          mkdir -p docs_to_public/latest
-          # Copy files from docs_build_output directly to docs_to_public/latest
-          cp -r docs_build_output/* docs_to_public/latest/
-          echo "Files ready for deployment in docs_to_public/latest directory"
+          mkdir -p gh-pages/latest
+          cp -r docs_build_output/* gh-pages/latest/
 
-      # Deploy to gh-pages branch only for master pushes
-      - name: Deploy to Github Pages 🚀
+      - name: Upload artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        uses: JamesIves/github-pages-deploy-action@releases/v3
+        uses: actions/upload-pages-artifact@v3
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: gh-pages
-          FOLDER: ./docs_to_public
-          # The following settings ensure we don't delete other content when deploying
-          CLEAN: false
+          path: 'gh-pages'
+
+      - name: Deploy to GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        id: deployment
+        uses: actions/deploy-pages@v4
+
