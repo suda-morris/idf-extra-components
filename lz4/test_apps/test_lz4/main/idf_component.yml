@@ -1,0 +1,5 @@
+dependencies:
+  espressif/lz4:
+    version: "*"
+    override_path: "../../.."
+  joltwallet/littlefs: "~1.22.3"

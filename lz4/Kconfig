@@ -1,0 +1,63 @@
+menu "LZ4 Configurations"
+
+    config LZ4_USE_PSRAM
+        bool "Prefer PSRAM for LZ4 internal allocations"
+        depends on SPIRAM
+        default n
+        help
+            Prefer PSRAM for LZ4's large library-internal heap allocations when
+            available. Internal 8-bit RAM is used as a fallback when PSRAM is
+            not initialized or cannot satisfy an allocation.
+
+            Allocations of 32 KiB or more (HC workspaces, Frame scratch,
+            lz4file buffers) prefer PSRAM. Smaller objects, including Block
+            hash tables, prefer internal RAM: compression walks the hash table
+            randomly, which is slower in PSRAM.
+
+            Either class falls back to the other region when the preferred
+            heap cannot satisfy the request.
+
+    config LZ4_FAST_DEC_LOOP
+        bool "Enable LZ4 fast decode loop"
+        default n
+        help
+            Opt into the upstream fast-path decoder. Upstream enables it only
+            for x86 and aarch64 builds and leaves it off for other targets
+            including Xtensa and RISC-V; this option follows the same
+            conservative default for ESP targets.
+
+            Measured on an ESP32-C5 with this component's benchmark
+            (compressible input): decompression +17% throughput at a cost of
+            about 3 KiB of code size. Enable this option for decompression-
+            heavy workloads such as compressed assets, logs, or network
+            payloads.
+
+    choice LZ4_BLOCK_HASH_TABLE_SIZE
+        prompt "LZ4 Block API hash table size"
+        default LZ4_BLOCK_HASH_TABLE_SIZE_16KB
+        help
+            Memory reserved from the heap by every Block compression state for
+            its hash table. Smaller tables shrink the per-call allocation and
+            can improve cache locality, at the cost of compression ratio.
+            HC and Frame states are not affected.
+
+            Do not place this state on a small FreeRTOS task stack.
+
+        config LZ4_BLOCK_HASH_TABLE_SIZE_1KB
+            bool "1 KiB"
+
+        config LZ4_BLOCK_HASH_TABLE_SIZE_2KB
+            bool "2 KiB"
+
+        config LZ4_BLOCK_HASH_TABLE_SIZE_4KB
+            bool "4 KiB"
+
+        config LZ4_BLOCK_HASH_TABLE_SIZE_8KB
+            bool "8 KiB"
+
+        config LZ4_BLOCK_HASH_TABLE_SIZE_16KB
+            bool "16 KiB (upstream default)"
+
+    endchoice
+
+endmenu
