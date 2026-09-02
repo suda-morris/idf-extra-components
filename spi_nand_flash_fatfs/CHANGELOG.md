@@ -1,3 +1,6 @@
+## [1.1.1]
+- fix: call `esp_vfs_fat_register` with `esp_vfs_fat_conf_t` on ESP-IDF v6.0+ (the `_cfg` name is deprecated there). Keep `esp_vfs_fat_register_cfg` for v5.3–v5.x and the 4-argument register API for older IDF.
+
 ## [1.1.0]
 
 ### Added
