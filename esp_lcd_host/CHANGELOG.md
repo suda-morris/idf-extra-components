@@ -7,6 +7,6 @@
 - `esp_lcd_host_config_t` selects resolution, color format, preview window, preview scaling and window title per panel
 - Optional SDL preview window (`create_window`), refreshed by `esp_lcd_host_pump_events()`
 - `esp_lcd_host_screenshot_save_png()` streams scanlines into a PNG file via libpng `png_write_row` (no extra full-frame RGB buffer)
-- `esp_lcd_host_screenshot_dump_base64()` streams the framebuffer as base64 over a `FILE*` (e.g. the serial console), yielding between lines so a long serial dump does not trip the task watchdog
 - `esp_lcd_host_return_panel()` and `esp_lcd_host_return_buffers()` publish the latest frame to the SDL simulator
 - `esp_lcd_host_get_target()` reports whether the application runs on the host (POSIX) target or on a chip
+- The component manifest restricts the component to the `linux` target, it is a host simulation only

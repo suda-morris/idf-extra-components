@@ -9,31 +9,12 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include "sys/param.h"
 #include "esp_check.h"
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "mbedtls/base64.h"
 #include "esp_lcd_host_panel.h"
 #include "png.h"
 
 static const char *TAG = "lcd_host.shot";
-
-#define HOST_BASE64_CHUNK_IN     3072
-#define HOST_BASE64_CHUNK_OUT    (((HOST_BASE64_CHUNK_IN + 2) / 3) * 4)
-#define HOST_BASE64_BUFFER_SIZE  (HOST_BASE64_CHUNK_OUT + 1)
-
-/* Print the fourcc the same way esp_lcd_screenshot does: little endian packed,
- * so the first character is the least significant byte. */
-static void host_panel_fourcc_str(esp_color_fourcc_t fourcc, char out[5])
-{
-    out[0] = (char)(fourcc & 0xff);
-    out[1] = (char)((fourcc >> 8) & 0xff);
-    out[2] = (char)((fourcc >> 16) & 0xff);
-    out[3] = (char)((fourcc >> 24) & 0xff);
-    out[4] = '\0';
-}
 
 static uint8_t rgb565_to_rgb888_r(uint16_t c)
 {
@@ -181,41 +162,4 @@ err_close_file:
     }
 err:
     return ret;
-}
-
-esp_err_t esp_lcd_host_screenshot_dump_base64(esp_lcd_panel_handle_t panel, FILE *stream)
-{
-    esp_lcd_host_panel_info_t info = {0};
-    ESP_RETURN_ON_ERROR(esp_lcd_host_panel_get_info(panel, &info), TAG, "invalid panel handle");
-    if (!stream) {
-        stream = stdout;
-    }
-
-    char fourcc[5];
-    host_panel_fourcc_str(info.color_format, fourcc);
-
-    unsigned char *encoded = malloc(HOST_BASE64_BUFFER_SIZE);
-    ESP_RETURN_ON_FALSE(encoded, ESP_ERR_NO_MEM, TAG, "no mem for base64 buffer");
-
-    fprintf(stream, "FRAMEBUFFER_BEGIN %d %d %s\n", info.width, info.height, fourcc);
-    size_t remaining = info.framebuffer_size;
-    const unsigned char *src = info.framebuffer;
-    while (remaining > 0) {
-        size_t chunk = MIN(remaining, (size_t)HOST_BASE64_CHUNK_IN);
-        size_t encoded_len = 0;
-        mbedtls_base64_encode(encoded, HOST_BASE64_BUFFER_SIZE, &encoded_len, src, chunk);
-        encoded[encoded_len] = '\0';
-        fprintf(stream, "FB_BASE64 %s\n", encoded);
-        /* Let the idle task and the task watchdog run while the framebuffer is
-         * streamed out through a slow console. */
-        vTaskDelay(1);
-        src += chunk;
-        remaining -= chunk;
-    }
-    fprintf(stream, "FRAMEBUFFER_END\n");
-    fflush(stream);
-
-    free(encoded);
-    ESP_LOGI(TAG, "Dumped %dx%d %s framebuffer as base64", info.width, info.height, fourcc);
-    return ESP_OK;
 }

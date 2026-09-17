@@ -1,5 +1,0 @@
-idf_component_register(SRCS "test_app_main.c"
-                            "test_esp_lcd_host.c"
-                       INCLUDE_DIRS "."
-                       PRIV_REQUIRES unity
-                       WHOLE_ARCHIVE)

@@ -7,7 +7,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include "esp_err.h"
 #include "esp_lcd_host_types.h"
 
@@ -47,8 +46,7 @@ typedef struct {
  * component, so a GUI port written for a real LCD can be pointed at this device
  * without further changes. Every `draw_bitmap()` call is stored in a full size
  * framebuffer, which
- *   - can be exported with `esp_lcd_host_screenshot_save_png()` or
- *     `esp_lcd_host_screenshot_dump_base64()`,
+ *   - can be exported with `esp_lcd_host_screenshot_save_png()`,
  *   - is shown in an SDL preview window when `config->create_window` is set.
  *
  * The configuration is stored per panel and every panel keeps its own
@@ -144,24 +142,6 @@ esp_err_t esp_lcd_host_pump_events(void);
  *      - ESP_FAIL if filepath cannot be opened or the PNG file cannot be written
  */
 esp_err_t esp_lcd_host_screenshot_save_png(esp_lcd_panel_handle_t panel, const char *filepath);
-
-/**
- * @brief Dump the current panel content as base64 to a FILE stream
- *
- * Outputs the raw pixel data between FRAMEBUFFER_BEGIN and FRAMEBUFFER_END
- * markers, encoded as base64. The FRAMEBUFFER_BEGIN line is
- * "FRAMEBUFFER_BEGIN <width> <height> <fourcc>", where <fourcc> is the
- * 4-character code (e.g. BGR3, RGBL). Each payload line is prefixed with
- * "FB_BASE64 ". The dump yields between encoded lines so a long blocking console
- * write does not trip the task watchdog.
- *
- * @param[in] panel  Panel handle created by esp_lcd_new_panel_host_sdl()
- * @param[in] stream Output stream (e.g. stdout). If NULL, uses stdout.
- * @return
- *      - ESP_OK on success
- *      - ESP_ERR_INVALID_ARG if panel is NULL or is not a host SDL panel
- */
-esp_err_t esp_lcd_host_screenshot_dump_base64(esp_lcd_panel_handle_t panel, FILE *stream);
 
 #ifdef __cplusplus
 }

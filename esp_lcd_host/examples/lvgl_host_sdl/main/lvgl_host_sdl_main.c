@@ -8,15 +8,12 @@
  * calls the generic esp_lcd panel API and it does not know whether the panel is
  * the SDL host panel or a real display controller.
  *
- * The rendered frame can be checked on the host in two ways:
- *   - it is saved as an RGB888 PPM file, and
- *   - it is dumped as base64 over the serial console, so the pytest script can
- *     rebuild the image and compare it with a golden reference.
+ * The rendered frame is saved as a PNG file, which the pytest script checks and
+ * compares with a committed golden image.
  *
  * The reference framebuffer below is filled with the same LVGL flush callback
- * that feeds the panel. The panel is compared against it, because the SDL
- * preview backend is only compiled for the ESP-IDF host (Linux) target and the
- * panel framebuffer is not touched by it.
+ * that feeds the panel. It is exported as an RGB888 PPM file next to the PNG, so
+ * the very same frame can be inspected without decoding a PNG.
  */
 
 #include <stdio.h>
@@ -33,6 +30,7 @@
 #define EXAMPLE_LCD_H_RES       240
 #define EXAMPLE_LCD_V_RES       240
 #define EXAMPLE_DRAW_BUF_LINES  40
+#define EXAMPLE_PNG_PATH        "screenshot.png"
 #define EXAMPLE_PPM_PATH        "lvgl_host_sdl_result.ppm"
 
 static const char *TAG = "example";
@@ -99,7 +97,7 @@ static void example_create_ui(void)
 }
 
 /* Write a binary PPM (P6) file with the reference image, so the very same frame
- * can be inspected on the host without decoding the base64 dump. */
+ * can be inspected on the host without decoding the PNG. */
 static esp_err_t example_save_ppm(const char *filepath)
 {
     FILE *f = fopen(filepath, "wb");
@@ -172,14 +170,11 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_lcd_host_pump_events());
 
     ESP_LOGI(TAG, "Save the rendered frame as a PNG file");
-    ESP_ERROR_CHECK(esp_lcd_host_screenshot_save_png(panel_handle, "screenshot.png"));
+    /* The PNG uses the panel resolution and color format, so a scaling preview
+     * window does not change it. */
+    ESP_ERROR_CHECK(esp_lcd_host_screenshot_save_png(panel_handle, EXAMPLE_PNG_PATH));
     ESP_ERROR_CHECK(example_save_ppm(EXAMPLE_PPM_PATH));
 
-    ESP_LOGI(TAG, "Dump the panel content over the serial console");
-    /* The dump uses the panel resolution and color format, so a scaling preview
-     * window does not change it. A host script can rebuild the raw image from
-     * the base64 payload between the FRAMEBUFFER markers. */
-    ESP_ERROR_CHECK(esp_lcd_host_screenshot_dump_base64(panel_handle, stdout));
     ESP_ERROR_CHECK(esp_lcd_host_return_panel(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_host_return_buffers(panel_handle));
 

@@ -3,18 +3,20 @@ description: Virtual esp_lcd panel powered by SDL, for simulating a display on t
 url: https://github.com/espressif/idf-extra-components/tree/master/esp_lcd_host
 repository: https://github.com/espressif/idf-extra-components.git
 issues: https://github.com/espressif/idf-extra-components/issues
+# The component is a host (Linux) simulation only: the SDL preview backend and
+# the screenshot helpers are compiled for the POSIX target. Restrict the component
+# to that target so the dependency solver rejects it for real chips instead of
+# failing later in the build.
+targets:
+  - linux
+
 dependencies:
   idf: ">=6.0.0"
   # The panel simulator passes every frame to SDL, so the component needs the SDL
-  # video and software renderer support. On chip targets the simulator runs as a
-  # separate process and the panel is a local stand-in, so SDL is not pulled in.
+  # video and software renderer support, plus libpng for the PNG export.
   georgik/sdl:
     version: "^3.3.7~3"
     public: true
-    matches:
-      - if: target == "linux"
   espressif/libpng:
     version: "^1.6.58"
     public: false
-    matches:
-      - if: target == "linux"

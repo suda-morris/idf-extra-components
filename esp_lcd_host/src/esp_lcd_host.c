@@ -51,25 +51,12 @@ static esp_err_t host_panel_check(esp_lcd_panel_handle_t panel, host_panel_t **r
     return ESP_OK;
 }
 
-/* FourCC values are packed little-endian: the first character occupies the
- * least-significant byte. Keep the printable form in sync with the value
- * reported in the base64 stream header and with esp_lcd_screenshot. */
-static void host_panel_fourcc_str(esp_color_fourcc_t fourcc, char out[5])
-{
-    out[0] = (char)(fourcc & 0xff);
-    out[1] = (char)((fourcc >> 8) & 0xff);
-    out[2] = (char)((fourcc >> 16) & 0xff);
-    out[3] = (char)((fourcc >> 24) & 0xff);
-    out[4] = '\0';
-}
-
 esp_err_t esp_lcd_new_panel_host_sdl(const esp_lcd_host_config_t *config, esp_lcd_panel_handle_t *ret_panel)
 {
     esp_err_t ret = ESP_OK;
     host_panel_t *host_panel = NULL;
     size_t bytes_per_pixel = 0;
     uint32_t sdl_format = 0;
-    char fourcc[5];
 
     ESP_RETURN_ON_FALSE(config && ret_panel, ESP_ERR_INVALID_ARG, TAG, "invalid argument");
     ESP_RETURN_ON_FALSE(config->width > 0 && config->height > 0, ESP_ERR_INVALID_ARG, TAG, "invalid panel size");
@@ -112,9 +99,8 @@ esp_err_t esp_lcd_new_panel_host_sdl(const esp_lcd_host_config_t *config, esp_lc
     host_panel->base.swap_xy = NULL;
     host_panel->base.set_gap = NULL;
 
-    host_panel_fourcc_str(config->color_format, fourcc);
     *ret_panel = &host_panel->base;
-    ESP_LOGI(TAG, "Host SDL panel created (%dx%d, %s, %s)", host_panel->width, host_panel->height, fourcc,
+    ESP_LOGI(TAG, "Host SDL panel created (%dx%d, %s)", host_panel->width, host_panel->height,
              config->create_window ? "with preview window" : "framebuffer only");
     return ESP_OK;
 

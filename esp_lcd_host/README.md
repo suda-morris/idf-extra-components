@@ -6,9 +6,9 @@
 
 - no LCD, no ribbon cable, no board: the same `idf.py build` builds the GUI against the simulated panel,
 - the GUI code stays untouched, because the panel implements the generic `esp_lcd_panel_t` interface used by every LCD driver,
-- the rendered frame can be exported as a PNG file, or dumped as base64 over the console and compared against a golden image in CI.
+- the rendered frame can be exported as a PNG file and compared against a golden image in CI.
 
-On the ESP-IDF host (`linux`) target the SDL window runs in the same process as the application. On a real chip the SDL simulator runs as a separate process and `esp_lcd_host_return_panel()` / `esp_lcd_host_return_buffers()` publish the frame to it.
+The component only builds for the ESP-IDF host (`linux`) target, where the SDL window runs in the same process as the application. The manifest of the component declares that target, so the component manager rejects the dependency for a real chip instead of failing later in the build.
 
 ## Installation
 
@@ -21,7 +21,7 @@ dependencies:
 
 Then run `idf.py reconfigure` or build the project. The SDL and libpng dependencies are resolved by the IDF component manager.
 
-> The component requires ESP-IDF `>= 6.0.0` and the [`georgik/sdl`](https://components.espressif.com/components/georgik/sdl) component. Taking the published `georgik/sdl` also pulls in `georgik/sdl_bsp`, the board abstraction layer of the SDL ecosystem; select **No board (SDL only)** in `menuconfig` under *ESP-BSP SDL Configuration* so that no board BSP is initialized and the panel of this component is used instead. The `examples/lvgl_host_sdl/sdkconfig.defaults` file does that already.
+> The component requires the `linux` target, ESP-IDF `>= 6.0.0` and the [`georgik/sdl`](https://components.espressif.com/components/georgik/sdl) component. Taking the published `georgik/sdl` also pulls in `georgik/sdl_bsp`, the board abstraction layer of the SDL ecosystem; select **No board (SDL only)** in `menuconfig` under *ESP-BSP SDL Configuration* so that no board BSP is initialized and the panel of this component is used instead. The `examples/lvgl_host_sdl/sdkconfig.defaults` file does that already.
 
 ## Quick start
 
@@ -56,33 +56,30 @@ While a preview window is open, pump its event queue periodically, for example f
 ESP_ERROR_CHECK(esp_lcd_host_pump_events());
 ```
 
-### Save or compare the rendered frame
+### Save the rendered frame
 
 ```c
 // Save the latest frame as PNG. The file uses the panel resolution and color
 // format, a scaled preview window does not change it.
 ESP_ERROR_CHECK(esp_lcd_host_screenshot_save_png(panel, "screenshot.png"));
-
-// Or dump the frame as base64 over the serial console:
-ESP_ERROR_CHECK(esp_lcd_host_screenshot_dump_base64(panel, stdout));
 ```
 
-The base64 dump is delimited by `FRAMEBUFFER_BEGIN <width> <height> <fourcc>` and `FRAMEBUFFER_END`, with `FB_BASE64 ` prefixes on the payload lines, so a host-side test can rebuild the raw image and compare it against a golden reference. See the example for a pytest script that does this.
+See the example for a pytest script that compares the rendered frame against a golden image.
 
-### Publishing frames to an external simulator
+### Publishing frames to the simulator
 
-When the SDL simulator runs as a separate process (for example on a real chip), hand the frame over explicitly after the GUI finished the frame:
+Hand the frame over explicitly after the GUI finished the frame:
 
 ```c
 ESP_ERROR_CHECK(esp_lcd_host_return_panel(panel));
 ESP_ERROR_CHECK(esp_lcd_host_return_buffers(panel));
 ```
 
-Both calls are no-ops on the POSIX target, where the simulator shares the process with the application, and they can be called before and after the SDL panel exists.
+Both calls are accepted before and after the SDL panel exists.
 
 ## Example
 
-[`examples/lvgl_host_sdl`](examples/lvgl_host_sdl) renders an LVGL screen into the SDL panel, opens a preview window, writes a PNG and a PPM file, and dumps the frame as base64 for the pytest golden image check:
+[`examples/lvgl_host_sdl`](examples/lvgl_host_sdl) renders an LVGL screen into the SDL panel, opens a preview window, writes a PNG and a PPM file, and compares the frame against a golden image from a pytest script:
 
 ```bash
 cd examples/lvgl_host_sdl
@@ -93,6 +90,7 @@ idf.py build
 
 ## Notes and limitations
 
+- The component only supports the `linux` target. There is no driver for a real display controller, use an `esp_lcd_*` panel driver for that.
 - The panel stores the pixels submitted by the GUI, so rotation, gap, mirroring and color inversion are not applied to the exported image. The same is true for the preview window.
 - A frame may consist of several partial flushes. Export or publish the panel content only after the refresh you want is finished (for example after a synchronous `lv_refr_now()`).
 - `create_window` needs a display in the environment where the application runs. Without one, SDL window creation fails and the panel keeps working as a framebuffer only.

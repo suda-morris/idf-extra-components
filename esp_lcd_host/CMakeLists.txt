@@ -14,7 +14,7 @@ endif()
 idf_component_register(SRCS ${srcs}
                        INCLUDE_DIRS "include" "src"
                        PRIV_INCLUDE_DIRS "src"
-                       PRIV_REQUIRES mbedtls hal)
+                       PRIV_REQUIRES hal)
 
 # The generic esp_lcd component is the one that provides esp_lcd_panel_ops.h and
 # the esp_lcd_panel_t interface. It does not build on the POSIX host target, so

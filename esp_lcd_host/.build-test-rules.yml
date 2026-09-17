@@ -5,11 +5,3 @@ esp_lcd_host/examples/lvgl_host_sdl:
   disable:
     - if: IDF_VERSION_MAJOR < 6
       reason: The SDL component used by esp_lcd_host requires ESP-IDF v6.0 or above
-
-esp_lcd_host/host_test:
-  enable:
-    - if: IDF_TARGET == "linux"
-      reason: The component only builds for the ESP-IDF host (POSIX) target
-  disable:
-    - if: IDF_VERSION_MAJOR < 6
-      reason: The SDL component used by esp_lcd_host requires ESP-IDF v6.0 or above

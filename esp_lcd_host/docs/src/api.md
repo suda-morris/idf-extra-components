@@ -22,7 +22,6 @@ The Doxygen documentation is generated from the header file during the documenta
 ### Frame Export
 
 - `esp_lcd_host_screenshot_save_png()` — Save the panel content as a PNG file.
-- `esp_lcd_host_screenshot_dump_base64()` — Dump the panel content as base64 to a stream.
 
 ## Types
 

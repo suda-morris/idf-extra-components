@@ -10,7 +10,7 @@ The component solves three common problems of GUI development on embedded hardwa
 
 - **No display needed** — the GUI output is rendered into an SDL window on the host, and the same `idf.py build` builds the application.
 - **GUI code stays portable** — the panel speaks `esp_lcd`, so the LVGL flush callback and the display driver registration do not change.
-- **Frames can be verified automatically** — the panel content can be saved as a PNG file, or dumped as base64 and compared against a golden image in CI.
+- **Frames can be verified automatically** — the panel content can be saved as a PNG file and compared against a golden image in CI.
 
 The panel keeps a full-size copy of the pixels submitted by the GUI. Rotation, gap, mirroring and color inversion are not applied to that copy, in the same way that they are not applied to the preview window.
 
@@ -41,7 +41,6 @@ flowchart TD
     subgraph EXPORT["3 · Use the Rendered Frame"]
         direction TB
         png["esp_lcd_host_screenshot_save_png()"]:::export
-        b64["esp_lcd_host_screenshot_dump_base64()"]:::export
         ext["esp_lcd_host_return_panel()<br/>esp_lcd_host_return_buffers()"]:::export
         inspect["Inspect the window,<br/>the PNG file, or compare<br/>against a golden image"]:::validate
     end
@@ -57,10 +56,8 @@ flowchart TD
     flush --> pump
     pump -- "another frame" --> flush
     pump -- "frame is complete" --> png
-    pump --> b64
     pump -.-> ext
     png --> inspect
-    b64 --> inspect
     ext --> inspect
     inspect --> destroy --> end_node
     destroy -.-> del
@@ -108,7 +105,6 @@ PNG export always produces 8 bits per channel. For 32bpp formats an all-zero alp
 ## Frame export
 
 - `esp_lcd_host_screenshot_save_png()` writes the panel content as a PNG file. Colors are converted scanline by scanline and handed to libpng with `png_write_row()`, so no extra full-frame RGB buffer is allocated.
-- `esp_lcd_host_screenshot_dump_base64()` writes the raw pixels between `FRAMEBUFFER_BEGIN` and `FRAMEBUFFER_END` markers as base64 to a stream, for scripts that rebuild the image. The dump yields between lines, so a long blocking console write does not trip the task watchdog.
 - `esp_lcd_host_return_panel()` and `esp_lcd_host_return_buffers()` hand the latest frame to the SDL simulator when it runs as a separate process.
 
 Export and publish the panel content only after the GUI finished the frame you want, because as with any `esp_lcd` panel a frame can consist of several partial flushes.

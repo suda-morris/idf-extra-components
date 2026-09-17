@@ -76,8 +76,8 @@ esp_err_t esp_lcd_host_sdl_backend_create(const esp_lcd_host_config_t *config, u
 
     *ret_ctx = NULL;
     if (!config->create_window) {
-        /* Framebuffer only: the content can still be exported as PNG, dumped as
-         * base64 or returned to an external simulator, no SDL object needed. */
+        /* Framebuffer only: the content can still be exported as PNG or
+         * returned to an external simulator, no SDL object needed. */
         return ESP_OK;
     }
 

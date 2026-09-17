@@ -6,9 +6,8 @@ This example renders an LVGL screen into an `esp_lcd_host` panel, so the GUI can
 
 1. Creates a 240 x 240 `ESP_COLOR_FOURCC_BGR24` panel, with a 2x scaled SDL preview window.
 2. Registers the panel as an LVGL display and renders a static screen with a title, a chart and a button.
-3. Saves the rendered frame as `screenshot.png` (panel pixels) and `lvgl_host_sdl_result.ppm` (the same frame, kept by the example itself).
-4. Dumps the panel content over the console as base64.
-5. Uses a pytest script that decodes the dump and compares it with `golden_result.ppm`.
+3. Saves the rendered frame as `screenshot.png` (through the component) and `lvgl_host_sdl_result.ppm` (the same frame, kept by the example itself).
+4. Uses a pytest script that checks the PNG written by the component and compares the PPM frame with `golden_result.ppm`.
 
 The reference framebuffer inside the example is filled by the same LVGL flush callback that feeds the panel, so the comparison does not depend on the SDL backend, which is not compiled for chip targets.
 
@@ -38,20 +37,15 @@ The serial output contains messages similar to:
 
 ```text
 I (350) example: Install the SDL host LCD panel driver
-I (360) lcd_host: Host SDL panel created (240x240, BGR3, with preview window)
+I (360) lcd_host: Host SDL panel created (240x240, with preview window)
 I (370) lcd_host.sdl: preview window 'esp_lcd_host example' created (480x480, scale 2)
 I (600) example: Save the rendered frame as a PNG file
 I (650) lcd_host.shot: Saved 240x240 PNG image (4321 bytes) to 'screenshot.png'
 I (660) example: Reference frame written to lvgl_host_sdl_result.ppm
-I (670) example: Dump the panel content over the serial console
-FRAMEBUFFER_BEGIN 240 240 BGR3
-FB_BASE64 3Hj9/+H...
-FB_BASE64 ...
-FRAMEBUFFER_END
 I (1200) example: LVGL host SDL example done.
 ```
 
-The framebuffer is RGB888 in B, G, R byte order (`BGR3`) and the base64 payload contains `240 x 240 x 3` bytes.
+The framebuffer is RGB888 in B, G, R byte order and the PNG file contains `240 x 240 x 3` bytes.
 
 ## Automated verification
 
@@ -61,8 +55,10 @@ Run the test from this directory with a build directory created by the CI or by 
 pytest pytest_lvgl_host_sdl.py --target linux --embedded-services idf --build-dir build
 ```
 
-The decoded frame is saved as `lvgl_host_sdl_result.ppm` in the pytest-embedded log directory, typically below `/tmp/pytest-embedded/`, which is useful when inspecting a test failure.
+The pytest script checks the geometry and the color type of the PNG written by the component, saves it as `screenshot.png` in the pytest-embedded log directory (typically below `/tmp/pytest-embedded/`), and compares the PPM frame with `golden_result.ppm`. Copy the saved `screenshot.png` over the golden image when the UI changed intentionally.
 
 ### Capturing a frame in an application
 
 The generic `esp_lcd` interface has no concept of a complete GUI frame: a frame may consist of multiple partial flushes. Export the panel content only after the refresh you want is finished (for example after a synchronous `lv_refr_now()`, as in this example). The driver does not pause drawing, so do not export from another task while the GUI is still flushing that frame.
+
+The PNG export only depends on the panel itself, so it also works when the panel was created with `create_window = false`, which is what the CI runs use.
