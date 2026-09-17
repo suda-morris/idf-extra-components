@@ -41,6 +41,7 @@ body:
         - esp_gcov
         - esp_isotp
         - esp_jpeg
+        - esp_lcd_host
         - esp_lcd_qemu_rgb
         - esp_lcd_screenshot
         - esp_schedule

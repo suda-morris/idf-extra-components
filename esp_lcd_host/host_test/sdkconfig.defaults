@@ -1,0 +1,4 @@
+CONFIG_IDF_TARGET="linux"
+
+# The host panel driver owns the display itself, no board BSP is involved.
+CONFIG_SDL_BSP_NO_BOARD=y
