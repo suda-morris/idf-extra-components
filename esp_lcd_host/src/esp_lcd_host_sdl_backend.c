@@ -5,10 +5,12 @@
  *
  * SDL backend for the esp_lcd_host panel driver.
  *
- * SDL keeps the panel content in the SDL surface of the preview window, whose
- * pixel buffer is the panel framebuffer itself, so submitting a frame copies
- * nothing. The window surface is refreshed lazily, otherwise the synchronous
- * SDL_UpdateWindowSurface() would steal time from the GUI.
+ * The SDL surface of the preview window wraps the framebuffer of the panel, so
+ * submitting a frame copies nothing. The surface is refreshed lazily, otherwise
+ * the synchronous SDL_UpdateWindowSurface() would steal time from the GUI.
+ *
+ * The SDL headers come from esp_lcd_host/SDL, the submodule this component
+ * builds through port/sdl/CMakeLists.txt.
  */
 #include <stdlib.h>
 #include <string.h>
@@ -37,8 +39,9 @@ esp_err_t esp_lcd_host_sdl_pixel_format(esp_color_fourcc_t fourcc, uint32_t *ret
     size_t bytes = 0;
 
     switch (fourcc) {
-    /* SDL_PIXELFORMAT_RGB565 stores the value in native byte order, which is
-     * what the little endian ESP_COLOR_FOURCC_RGB16 describes. */
+    /* A native endian RGB565 value is what ESP_COLOR_FOURCC_RGB16 describes on
+     * the little endian host target, and SDL_PIXELFORMAT_RGB565 stores the
+     * value in native byte order. */
     case ESP_COLOR_FOURCC_RGB16:
     case ESP_COLOR_FOURCC_RGB16_BE:
         format = SDL_PIXELFORMAT_RGB565;
@@ -76,8 +79,8 @@ esp_err_t esp_lcd_host_sdl_backend_create(const esp_lcd_host_config_t *config, u
 
     *ret_ctx = NULL;
     if (!config->create_window) {
-        /* Framebuffer only: the content can still be exported as PNG or
-         * returned to an external simulator, no SDL object needed. */
+        /* Framebuffer only: the content can still be exported as a PNG file,
+         * no SDL object needed. */
         return ESP_OK;
     }
 
@@ -109,7 +112,9 @@ esp_err_t esp_lcd_host_sdl_backend_create(const esp_lcd_host_config_t *config, u
     }
 
     /* The surface wraps the panel framebuffer: drawing into it writes into the
-     * framebuffer and no copy is needed when a frame is submitted. */
+     * framebuffer and SDL scales the surface to the window, so a preview at
+     * `scale` shares the pixel buffer with the panel and a submitted frame
+     * copies nothing. */
     ctx->surface = SDL_CreateSurfaceFrom(config->width, config->height, sdl_format, framebuffer,
                                          config->width * (int)bytes_per_pixel);
     if (!ctx->surface) {

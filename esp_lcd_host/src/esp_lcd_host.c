@@ -3,11 +3,13 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Virtual esp_lcd panel built on top of the SDL component.
+ * Virtual esp_lcd panel built on top of the SDL that is vendored in this
+ * component.
  *
- * The panel can be used the same way on the ESP-IDF host (Linux) target, where
- * the SDL simulation backend runs in the same process as the application, and on
- * a real chip, where the simulator runs as a separate process.
+ * The panel is a regular esp_lcd panel that lives in the process of the
+ * application: the SDL backend renders the framebuffer of the panel into a
+ * window of the ESP-IDF host (Linux) target, and it can export that framebuffer
+ * as a PNG file, which is how a host test verifies the rendered frame.
  */
 #include <stdlib.h>
 #include <string.h>
@@ -118,11 +120,8 @@ esp_err_t esp_lcd_host_get_target(esp_lcd_panel_handle_t panel, esp_lcd_host_tar
     ESP_RETURN_ON_FALSE(target, ESP_ERR_INVALID_ARG, TAG, "invalid argument");
     ESP_RETURN_ON_ERROR(host_panel_check(panel, &drv), TAG, "invalid panel handle");
 
-#if CONFIG_IDF_TARGET_LINUX
+    /* The component only builds for the host target. */
     *target = ESP_LCD_HOST_TARGET_POSIX;
-#else
-    *target = ESP_LCD_HOST_TARGET_ESP32;
-#endif
     return ESP_OK;
 }
 
@@ -130,10 +129,9 @@ esp_err_t esp_lcd_host_return_panel(esp_lcd_panel_handle_t panel)
 {
     host_panel_t *drv = NULL;
     ESP_RETURN_ON_ERROR(host_panel_check(panel, &drv), TAG, "invalid panel handle");
-    /* The SDL simulation backend pulls the framebuffer itself, so on the POSIX
-     * target there is nothing else to publish. On a real chip the panel is a
-     * local stand-in for a panel owned by the simulator process, which polls
-     * its own memory and never sees this object. */
+    /* The SDL backend renders the framebuffer of the panel, which it shares
+     * with the panel, so there is nothing else to publish. The call is kept so
+     * a GUI port that publishes its frame can use one code path. */
     return ESP_OK;
 }
 
@@ -141,8 +139,8 @@ esp_err_t esp_lcd_host_return_buffers(esp_lcd_panel_handle_t panel)
 {
     host_panel_t *drv = NULL;
     ESP_RETURN_ON_ERROR(host_panel_check(panel, &drv), TAG, "invalid panel handle");
-    /* See esp_lcd_host_return_panel(): the framebuffer is already owned by the
-     * caller and shared with the SDL backend. */
+    /* See esp_lcd_host_return_panel(): the framebuffer is already shared with
+     * the SDL backend. */
     return ESP_OK;
 }
 

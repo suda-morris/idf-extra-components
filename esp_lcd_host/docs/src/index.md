@@ -16,7 +16,7 @@ The panel keeps a full-size copy of the pixels submitted by the GUI. Rotation, g
 
 ## API Usage Workflow
 
-The diagram below shows the lifecycle of an application built on the SDL host panel. The **panel setup** stage replaces the LCD initialization of the board, **GUI registration** is the part that stays unchanged between a real display and the simulation, and the **frame export** stage makes the rendered content visible and testable. The dotted edge marks the frame publishing calls, which are only needed when the simulator runs in a separate process.
+The diagram below shows the lifecycle of an application built on the SDL host panel. The **panel setup** stage replaces the LCD initialization of the board, **GUI registration** is the part that stays unchanged between a real display and the simulation, and the **frame export** stage makes the rendered content visible and testable.
 
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"lineColor": "#7b8794"}}}%%
@@ -63,15 +63,38 @@ flowchart TD
     destroy -.-> del
 ```
 
+## SDL
+
+The component vendors SDL3 as the git submodule [`esp_lcd_host/SDL`](https://github.com/libsdl-org/SDL) and builds it from `port/sdl/CMakeLists.txt`. The build configuration the port uses for SDL is `port/include/sdl_build_config/SDL_build_config.h`, and the port only enables what an LCD driver needs:
+
+| Enabled | Description |
+| --- | --- |
+| Video, events, threads, timer, filesystem, storage | The SDL core the panel and the preview window rely on. |
+| Software renderer | Straightforward and dependency free, which is enough for a preview. |
+| KMSDRM video driver | Used when `libdrm` is installed, so the preview window appears on a local console. |
+| Dummy and offscreen video drivers | Always available, so a headless machine and CI keep working without a display. |
+
+Audio, camera, joystick, haptic, hidapi, sensor, power, dialog and GPU are disabled. The dynamic API of SDL is off as well, because it is meant for swapping the SDL library at run time and this port links SDL statically into the application: `SDL_DYNAMIC_API` is set to 0 in the build configuration, which is also what keeps SDL from asking the process for `SDL3` symbols at startup.
+
+Two files of the port are worth knowing about when the submodule is updated:
+
+| File | Purpose |
+| --- | --- |
+| `port/sdl/CMakeLists.txt` | Selects and builds the SDL sources. It mirrors the source list of the submodule and has to be reviewed for every SDL update. |
+| `port/include/sdl_build_config/SDL_build_config.h` | Replaces the `SDL_build_config.h` SDL generates from its own CMake project, see the comment at the top of the file. |
+| `port/src/sdl_port_stubs.c` | Holds the few definitions SDL wants from parts this port does not compile. |
+
+Check out the submodule before building, otherwise the build stops with an explicit error:
+
+```bash
+git submodule update --init --recursive esp_lcd_host/SDL
+```
+
 ## Prerequisites
 
-The component depends on the [`georgik/sdl`](https://components.espressif.com/components/georgik/sdl) component, which provides SDL3 together with its board abstraction layer `georgik/sdl_bsp`. The abstraction layer would otherwise initialize the display and touch driver of a board, which would conflict with the panel of this component, so select **No board (SDL only)** under *ESP-BSP SDL Configuration* in `menuconfig`:
-
-```
-CONFIG_SDL_BSP_NO_BOARD=y
-```
-
-With that option set the abstraction layer keeps SDL running and leaves the display to the caller, which is exactly the panel created by `esp_lcd_new_panel_host_sdl()`.
+- The ESP-IDF host (`linux`) target, ESP-IDF `>= 6.0.0`.
+- The checkout of the `esp_lcd_host/SDL` submodule for the sources of SDL.
+- The development packages of the display on a local console, when the preview window should be visible there: `libdrm` and `libegl`. Without them SDL keeps the dummy and offscreen video drivers, and the panel works as a framebuffer that is exported as a PNG file.
 
 ## Configuration
 
@@ -82,8 +105,7 @@ The panel is configured with `esp_lcd_host_config_t` at initialization time:
 | `width`, `height` | Panel resolution. `draw_bitmap()` calls are clipped to this rectangle. |
 | `color_format` | Pixel layout the GUI submits, as an `esp_color_fourcc_t`, for example `ESP_COLOR_FOURCC_BGR24` for LVGL RGB888 or `ESP_COLOR_FOURCC_RGB16` for RGB565. |
 | `create_window` | Opens an SDL preview window. Leave it `false` on machines without a display, for example in CI. |
-| `use_renderer` | Lets SDL scale the preview instead of requiring the window size to match the panel size. |
-| `scale` | Integer upscale factor for the preview window and the SDL renderer output. |
+| `scale` | Integer upscale factor of the preview window. The window surface is the panel framebuffer, so SDL scales it and no extra buffer is needed. |
 | `window_title` | Preview window title, a default is used when `NULL`. |
 
 The configuration is stored per panel, so several panels with different resolutions and color formats can coexist, and an export always uses the geometry of its own panel.
@@ -105,7 +127,7 @@ PNG export always produces 8 bits per channel. For 32bpp formats an all-zero alp
 ## Frame export
 
 - `esp_lcd_host_screenshot_save_png()` writes the panel content as a PNG file. Colors are converted scanline by scanline and handed to libpng with `png_write_row()`, so no extra full-frame RGB buffer is allocated.
-- `esp_lcd_host_return_panel()` and `esp_lcd_host_return_buffers()` hand the latest frame to the SDL simulator when it runs as a separate process.
+- `esp_lcd_host_return_panel()` and `esp_lcd_host_return_buffers()` publish the latest frame. The SDL backend renders the framebuffer of the panel itself, so the calls only validate the handle; a GUI port keeps them for a single code path.
 
 Export and publish the panel content only after the GUI finished the frame you want, because as with any `esp_lcd` panel a frame can consist of several partial flushes.
 
@@ -124,9 +146,11 @@ static void example_lv_timer_cb(lv_timer_t *timer)
 }
 ```
 
+An application without an LVGL task pumps the window from its own loop, which is what the example does before it exports the frame.
+
 ## Target detection
 
-`esp_lcd_host_get_target()` reports whether the application runs on the ESP-IDF host (`linux`) target or on a chip. This is useful for code that wants to adapt the simulation, for example to slow down animation ticks so the frames stay readable:
+`esp_lcd_host_get_target()` reports what the panel runs on. The component only builds for the ESP-IDF host (`linux`) target, so the call always reports `ESP_LCD_HOST_TARGET_POSIX` here. It is useful for code that wants to adapt the simulation, for example to slow down animation ticks so the frames stay readable:
 
 ```c
 esp_lcd_host_target_t target = ESP_LCD_HOST_TARGET_ESP32;
@@ -138,7 +162,8 @@ if (target == ESP_LCD_HOST_TARGET_POSIX) {
 
 ## Limitations
 
+- The component only supports the `linux` target. Use the `esp_lcd_*` panel driver of the display controller for a real chip.
 - The panel never blocks: `draw_bitmap()` copies the pixels and returns. A GUI that relies on the transfer-done callback of a real panel should not expect an asynchronous notification.
 - The exported image shows the pixels submitted by the GUI, before any rotation, gap, mirroring or color inversion is applied.
 - 16bpp formats are exported through the RGB565 to RGB888 expansion, which loses precision.
-- The preview window requires a display. Without one, SDL window creation fails and the panel continues to work as a framebuffer only.
+- A preview window needs a display and, on a local console, the KMSDRM driver of SDL. Without one, SDL window creation fails and the panel continues to work as a framebuffer only.

@@ -4,4 +4,4 @@ esp_lcd_host/examples/lvgl_host_sdl:
       reason: The example is a host simulation, the SDL panel needs the host (POSIX) target
   disable:
     - if: IDF_VERSION_MAJOR < 6
-      reason: The SDL component used by esp_lcd_host requires ESP-IDF v6.0 or above
+      reason: esp_lcd_host requires ESP-IDF v6.0 or above

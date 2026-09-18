@@ -6,9 +6,30 @@
 
 - no LCD, no ribbon cable, no board: the same `idf.py build` builds the GUI against the simulated panel,
 - the GUI code stays untouched, because the panel implements the generic `esp_lcd_panel_t` interface used by every LCD driver,
-- the rendered frame can be exported as a PNG file and compared against a golden image in CI.
+- the rendered frame can be saved as a PNG file and compared against a golden image in CI.
 
-The component only builds for the ESP-IDF host (`linux`) target, where the SDL window runs in the same process as the application. The manifest of the component declares that target, so the component manager rejects the dependency for a real chip instead of failing later in the build.
+The component only builds for the ESP-IDF host (`linux`) target. The manifest of the component declares that target, so the component manager rejects the dependency for a real chip instead of failing later in the build.
+
+## SDL
+
+The component vendors SDL3 as the git submodule [`esp_lcd_host/SDL`](SDL) and builds it from `port/sdl/CMakeLists.txt`. It is not taken from the component registry, so that the port can compile only what an LCD driver needs:
+
+- the video, event, thread, timer and filesystem paths, with the software renderer,
+- the KMSDRM video driver when `libdrm` is installed (a window on a local console), plus the always available dummy and offscreen drivers for headless machines and CI,
+- no audio, camera, joystick, haptic, hidapi, sensor, power, dialog or GPU subsystem.
+
+`port/include/sdl_build_config/SDL_build_config.h` is the SDL build configuration of the port. It is the only file that has to be updated when the submodule is updated, together with the source list of `port/sdl/CMakeLists.txt`.
+
+Because SDL is built from the submodule, the component has no dependency other than ESP-IDF:
+
+- the same `idf.py build` builds SDL and the panel, and nothing is downloaded at build time,
+- there is no board support layer that would install a display of its own.
+
+Check out the submodule after cloning the repository, or the build stops with an explicit error:
+
+```bash
+git submodule update --init --recursive esp_lcd_host/SDL
+```
 
 ## Installation
 
@@ -19,9 +40,9 @@ dependencies:
   espressif/esp_lcd_host: "^0.1.0"
 ```
 
-Then run `idf.py reconfigure` or build the project. The SDL and libpng dependencies are resolved by the IDF component manager.
+Then run `idf.py reconfigure` or build the project.
 
-> The component requires the `linux` target, ESP-IDF `>= 6.0.0` and the [`georgik/sdl`](https://components.espressif.com/components/georgik/sdl) component. Taking the published `georgik/sdl` also pulls in `georgik/sdl_bsp`, the board abstraction layer of the SDL ecosystem; select **No board (SDL only)** in `menuconfig` under *ESP-BSP SDL Configuration* so that no board BSP is initialized and the panel of this component is used instead. The `examples/lvgl_host_sdl/sdkconfig.defaults` file does that already.
+> The component requires the `linux` target and ESP-IDF `>= 6.0.0`.
 
 ## Quick start
 
@@ -35,7 +56,6 @@ esp_lcd_host_config_t config = {
     .height = 240,
     .color_format = ESP_COLOR_FOURCC_BGR24,  // LVGL RGB888 in memory
     .create_window = true,                   // set to false on a machine without a display
-    .use_renderer = true,                    // let SDL scale the preview window
     .scale = 2,                              // 240x240 panel in a 480x480 window
     .window_title = "My GUI",
 };
@@ -79,7 +99,7 @@ Both calls are accepted before and after the SDL panel exists.
 
 ## Example
 
-[`examples/lvgl_host_sdl`](examples/lvgl_host_sdl) renders an LVGL screen into the SDL panel, opens a preview window, writes a PNG and a PPM file, and compares the frame against a golden image from a pytest script:
+[`examples/lvgl_host_sdl`](examples/lvgl_host_sdl) renders an LVGL screen into the SDL panel, opens a preview window and writes `screenshot.png`, which the pytest script of the example compares against the committed golden image:
 
 ```bash
 cd examples/lvgl_host_sdl
@@ -88,10 +108,12 @@ idf.py build
 ./build/lvgl_host_sdl.elf
 ```
 
+The application and the test both run on the host, so the test reads the PNG file the application wrote. There is no serial transfer and no intermediate image format.
+
 ## Notes and limitations
 
 - The component only supports the `linux` target. There is no driver for a real display controller, use an `esp_lcd_*` panel driver for that.
 - The panel stores the pixels submitted by the GUI, so rotation, gap, mirroring and color inversion are not applied to the exported image. The same is true for the preview window.
 - A frame may consist of several partial flushes. Export or publish the panel content only after the refresh you want is finished (for example after a synchronous `lv_refr_now()`).
-- `create_window` needs a display in the environment where the application runs. Without one, SDL window creation fails and the panel keeps working as a framebuffer only.
+- A preview window needs a display and, on a local console, the KMSDRM video driver of SDL with access to the DRM device. Everywhere else SDL falls back to the dummy and offscreen drivers, and the panel keeps working as a framebuffer that can be exported as a PNG file.
 - Preview scaling is handled by SDL. The exported PNG always uses the panel resolution.

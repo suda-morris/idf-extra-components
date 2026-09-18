@@ -5,11 +5,19 @@
  *
  * Definitions the panel driver needs from the generic `esp_lcd` component.
  *
- * The `esp_lcd` component does not build for the ESP-IDF host (POSIX) target,
- * because it depends on chip peripherals. The public API of this component is
- * still the standard `esp_lcd` panel interface, so on the host target the
- * handful of declarations that describe a panel handle are provided here, with
- * the layout used by ESP-IDF. On every chip target the real headers are used.
+ * WORKAROUND: the `esp_lcd` component does not build for the ESP-IDF host
+ * (POSIX) target yet, because it depends on chip peripherals. The public API of
+ * this component is the standard `esp_lcd` panel interface, so instead of
+ * requiring `esp_lcd` this header takes the panel handle definition and the
+ * generic panel operations from it when they are available, and otherwise
+ * replicates the same declarations with the layout used by ESP-IDF:
+ *
+ *   - as soon as `esp_lcd` can be built for the host target, the real headers
+ *     are picked up and the fallback of esp_lcd_host_panel_ops.c is dropped
+ *     without any other change.
+ *
+ * The component is restricted to the `linux` target, so the chip branch below
+ * only exists to keep the declaration identical when the header is reused.
  */
 #pragma once
 
