@@ -65,36 +65,34 @@ flowchart TD
 
 ## SDL
 
-The component vendors SDL3 as the git submodule [`esp_lcd_host/SDL`](https://github.com/libsdl-org/SDL) and builds it from `port/sdl/CMakeLists.txt`. The build configuration the port uses for SDL is `port/include/sdl_build_config/SDL_build_config.h`, and the port only enables what an LCD driver needs:
+The component vendors SDL3 as the git submodule [`esp_lcd_host/SDL`](https://github.com/libsdl-org/SDL) and builds it with the CMake project SDL ships, through `add_subdirectory()` in `port/sdl/CMakeLists.txt`. Reusing the project of SDL keeps the source lists of the library and its build configuration header in sync with the submodule: nothing has to be copied or re-listed here.
+
+Before adding the subdirectory, the port turns off everything an LCD panel does not need and fixes the few results SDL would otherwise probe from the machine running CMake, so the build is small and reproducible:
 
 | Enabled | Description |
 | --- | --- |
 | Video, events, threads, timer, filesystem, storage | The SDL core the panel and the preview window rely on. |
 | Software renderer | Straightforward and dependency free, which is enough for a preview. |
-| KMSDRM video driver | Used when `libdrm` is installed, so the preview window appears on a local console. |
+| OpenGL ES (EGL only) | SDL only probes for EGL when OpenGL or OpenGL ES is on, and the KMSDRM driver cannot be built without EGL, so OpenGL ES stays on for the KMSDRM case alone. The panel never selects its render driver. |
+| KMSDRM video driver | Used when `libdrm`, `gbm` and EGL are present, so the preview window appears on a local console. |
 | Dummy and offscreen video drivers | Always available, so a headless machine and CI keep working without a display. |
 
-Audio, camera, joystick, haptic, hidapi, sensor, power, dialog and GPU are disabled. The dynamic API of SDL is off as well, because it is meant for swapping the SDL library at run time and this port links SDL statically into the application: `SDL_DYNAMIC_API` is set to 0 in the build configuration, which is also what keeps SDL from asking the process for `SDL3` symbols at startup.
+Audio, camera, joystick, haptic, hidapi, sensor, power, dialog, tray and GPU are off, and so are the X11, Wayland and GPU video drivers. The optional dependencies SDL would otherwise pick up from whatever is installed on the build machine (Fribidi, libthai, D-Bus, IBus, libudev, liburing) are off as well, together with the platform checks behind them. SDL generates `SDL_build_config.h` from its own template during the build, so the port does not carry a hand written configuration.
 
-Two files of the port are worth knowing about when the submodule is updated:
+The dynamic API of SDL is left at the SDL default. It is meant for swapping the SDL library at run time, and this port links SDL statically into the application, so it is inert here.
+
+Two files of the port are worth knowing about:
 
 | File | Purpose |
 | --- | --- |
-| `port/sdl/CMakeLists.txt` | Selects and builds the SDL sources. It mirrors the source list of the submodule and has to be reviewed for every SDL update. |
-| `port/include/sdl_build_config/SDL_build_config.h` | Replaces the `SDL_build_config.h` SDL generates from its own CMake project, see the comment at the top of the file. |
-| `port/src/sdl_port_stubs.c` | Holds the few definitions SDL wants from parts this port does not compile. |
-
-Check out the submodule before building, otherwise the build stops with an explicit error:
-
-```bash
-git submodule update --init --recursive esp_lcd_host/SDL
-```
+| `port/sdl/CMakeLists.txt` | Sets the SDL options and the fixed check results, then adds the SDL submodule. |
+| `port/src/sdl_port_stubs.c` | Holds the few definitions SDL wants from parts this port does not build. |
 
 ## Prerequisites
 
 - The ESP-IDF host (`linux`) target, ESP-IDF `>= 6.0.0`.
 - The checkout of the `esp_lcd_host/SDL` submodule for the sources of SDL.
-- The development packages of the display on a local console, when the preview window should be visible there: `libdrm` and `libegl`. Without them SDL keeps the dummy and offscreen video drivers, and the panel works as a framebuffer that is exported as a PNG file.
+- The development packages of the display on a local console, when the preview window should be visible there: `libdrm`, `gbm` and `libegl`. SDL also needs EGL for the KMSDRM driver, which is why the port keeps the EGL check of SDL on. Without them SDL keeps the dummy and offscreen video drivers, and the panel works as a framebuffer that is exported as a PNG file.
 
 ## Configuration
 

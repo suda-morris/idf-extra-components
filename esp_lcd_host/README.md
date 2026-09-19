@@ -12,13 +12,15 @@ The component only builds for the ESP-IDF host (`linux`) target. The manifest of
 
 ## SDL
 
-The component vendors SDL3 as the git submodule [`esp_lcd_host/SDL`](SDL) and builds it from `port/sdl/CMakeLists.txt`. It is not taken from the component registry, so that the port can compile only what an LCD driver needs:
+The component vendors SDL3 as the git submodule [`esp_lcd_host/SDL`](SDL) and builds it with the CMake project SDL ships, through `add_subdirectory()` in `port/sdl/CMakeLists.txt`. It is not taken from the component registry, and reusing the SDL project keeps the source lists and the build configuration header in sync with the submodule instead of copying them here.
+
+Before adding the subdirectory, the port turns off what an LCD driver does not need and fixes the few results SDL would otherwise probe from the build machine:
 
 - the video, event, thread, timer and filesystem paths, with the software renderer,
-- the KMSDRM video driver when `libdrm` is installed (a window on a local console), plus the always available dummy and offscreen drivers for headless machines and CI,
-- no audio, camera, joystick, haptic, hidapi, sensor, power, dialog or GPU subsystem.
+- the KMSDRM video driver when `libdrm`, `gbm` and EGL are installed (a window on a local console), plus the always available dummy and offscreen drivers for headless machines and CI,
+- no audio, camera, joystick, haptic, hidapi, sensor, power, dialog, tray or GPU subsystem, no X11, Wayland or GPU video driver, and none of the optional dependencies (Fribidi, libthai, D-Bus, IBus, libudev, liburing) SDL would otherwise pick up from the machine running CMake.
 
-`port/include/sdl_build_config/SDL_build_config.h` is the SDL build configuration of the port. It is the only file that has to be updated when the submodule is updated, together with the source list of `port/sdl/CMakeLists.txt`.
+SDL generates `SDL_build_config.h` during the build, so the port does not carry a hand written configuration.
 
 Because SDL is built from the submodule, the component has no dependency other than ESP-IDF:
 
