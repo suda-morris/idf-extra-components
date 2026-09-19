@@ -17,8 +17,30 @@ The component vendors SDL3 as the git submodule [`esp_lcd_host/SDL`](SDL) and bu
 Before adding the subdirectory, the port turns off what an LCD driver does not need and fixes the few results SDL would otherwise probe from the build machine:
 
 - the video, event, thread, timer and filesystem paths, with the software renderer,
-- the KMSDRM video driver when `libdrm`, `gbm` and EGL are installed (a window on a local console), plus the always available dummy and offscreen drivers for headless machines and CI,
-- no audio, camera, joystick, haptic, hidapi, sensor, power, dialog, tray or GPU subsystem, no X11, Wayland or GPU video driver, and none of the optional dependencies (Fribidi, libthai, D-Bus, IBus, libudev, liburing) SDL would otherwise pick up from the machine running CMake.
+- the video drivers that open a window on a desktop: **X11 and Wayland**, plus **KMSDRM** when `libdrm`, `gbm` and EGL are installed (a window on a local console), plus the always available dummy and offscreen drivers for headless machines and CI,
+- no audio, camera, joystick, haptic, hidapi, sensor, power, dialog, tray or GPU subsystem, no GPU video driver, and none of the optional dependencies (Fribidi, libthai, D-Bus, IBus, libudev, liburing) SDL would otherwise pick up from the machine running CMake.
+
+The X11 and Wayland drivers are probed, not fixed: SDL looks for them with `pkg-config` and `find_package(X11)`, and each one is compiled in only when the build machine has its development packages. Which one is used is decided by SDL at run time, so the same binary works in a Wayland session (native Wayland), in an X11 session, and under XWayland.
+
+An X11 driver that is half installed is handled too: the port probes the X11 packages before SDL does, so the driver is left out when they are incomplete instead of stopping the configuration, and the same for the X11 extensions SDL would otherwise require.
+
+Both are on by default, because a screen simulator is expected to open its preview window on the machine that builds it. They can be turned off for a build that must not depend on the build machine at all - it falls back to the dummy, offscreen and KMSDRM drivers, exactly like before:
+
+```bash
+idf.py -DESP_LCD_HOST_SDL_X11=OFF -DESP_LCD_HOST_SDL_WAYLAND=OFF build
+```
+
+This is what the CI of this repository does, so the Linux build there only depends on the toolchain in the `espressif/idf` image.
+
+The packages that are needed for a preview window on a desktop:
+
+| Driver | Debian/Ubuntu packages |
+| --- | --- |
+| Wayland | `libwayland-dev wayland-protocols libxkbcommon-dev libegl-dev` |
+| X11 | `libx11-dev libxext-dev` |
+| KMSDRM | `libdrm-dev libgbm-dev libegl-dev` |
+
+They are build time dependencies only: SDL loads X11 and Wayland with `dlopen()` at run time, so the executable is not linked against them and a machine without a display server still runs the same binary. Neither driver is required - without any of them the panel falls back to the offscreen driver and keeps working as an exportable framebuffer, which is what CI does.
 
 SDL generates `SDL_build_config.h` during the build, so the port does not carry a hand written configuration.
 
@@ -117,5 +139,5 @@ The application and the test both run on the host, so the test reads the PNG fil
 - The component only supports the `linux` target. There is no driver for a real display controller, use an `esp_lcd_*` panel driver for that.
 - The panel stores the pixels submitted by the GUI, so rotation, gap, mirroring and color inversion are not applied to the exported image. The same is true for the preview window.
 - A frame may consist of several partial flushes. Export or publish the panel content only after the refresh you want is finished (for example after a synchronous `lv_refr_now()`).
-- A preview window needs a display and, on a local console, the KMSDRM video driver of SDL with access to the DRM device. Everywhere else SDL falls back to the dummy and offscreen drivers, and the panel keeps working as a framebuffer that can be exported as a PNG file.
+- A preview window needs a display: SDL opens it through its X11 or Wayland driver on a desktop, and through KMSDRM on a local console with access to the DRM device. Everywhere else, including a build without the X11 and Wayland development packages, SDL falls back to the dummy and offscreen drivers, and the panel keeps working as a framebuffer that can be exported as a PNG file.
 - Preview scaling is handled by SDL. The exported PNG always uses the panel resolution.

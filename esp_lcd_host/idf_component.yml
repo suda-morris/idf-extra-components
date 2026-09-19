@@ -12,3 +12,5 @@ targets:
 
 dependencies:
   idf: ">=6.0.0"
+  # esp_lcd_host_screenshot_save_png() encodes through libpng (png_write_row).
+  espressif/libpng: "^1.6.58"

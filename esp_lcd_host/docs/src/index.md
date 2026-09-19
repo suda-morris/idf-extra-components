@@ -74,10 +74,11 @@ Before adding the subdirectory, the port turns off everything an LCD panel does 
 | Video, events, threads, timer, filesystem, storage | The SDL core the panel and the preview window rely on. |
 | Software renderer | Straightforward and dependency free, which is enough for a preview. |
 | OpenGL ES (EGL only) | SDL only probes for EGL when OpenGL or OpenGL ES is on, and the KMSDRM driver cannot be built without EGL, so OpenGL ES stays on for the KMSDRM case alone. The panel never selects its render driver. |
+| X11 and Wayland video drivers | Probed and enabled by default, so the preview window opens on a normal desktop: Wayland natively in a Wayland session, X11 in an X11 session and under XWayland. Each one is compiled in only when the build machine has its development packages, and the port probes the X11 packages on its own so that an incomplete set leaves the driver out instead of stopping the configuration. |
 | KMSDRM video driver | Used when `libdrm`, `gbm` and EGL are present, so the preview window appears on a local console. |
 | Dummy and offscreen video drivers | Always available, so a headless machine and CI keep working without a display. |
 
-Audio, camera, joystick, haptic, hidapi, sensor, power, dialog, tray and GPU are off, and so are the X11, Wayland and GPU video drivers. The optional dependencies SDL would otherwise pick up from whatever is installed on the build machine (Fribidi, libthai, D-Bus, IBus, libudev, liburing) are off as well, together with the platform checks behind them. SDL generates `SDL_build_config.h` from its own template during the build, so the port does not carry a hand written configuration.
+Audio, camera, joystick, haptic, hidapi, sensor, power, dialog, tray and GPU are off, and so are the GPU and board video drivers. The optional dependencies SDL would otherwise pick up from whatever is installed on the build machine (Fribidi, libthai, D-Bus, IBus, libudev, liburing) are off as well, together with the platform checks behind them. SDL generates `SDL_build_config.h` from its own template during the build, so the port does not carry a hand written configuration.
 
 The dynamic API of SDL is left at the SDL default. It is meant for swapping the SDL library at run time, and this port links SDL statically into the application, so it is inert here.
 
@@ -92,7 +93,16 @@ Two files of the port are worth knowing about:
 
 - The ESP-IDF host (`linux`) target, ESP-IDF `>= 6.0.0`.
 - The checkout of the `esp_lcd_host/SDL` submodule for the sources of SDL.
-- The development packages of the display on a local console, when the preview window should be visible there: `libdrm`, `gbm` and `libegl`. SDL also needs EGL for the KMSDRM driver, which is why the port keeps the EGL check of SDL on. Without them SDL keeps the dummy and offscreen video drivers, and the panel works as a framebuffer that is exported as a PNG file.
+- For a preview window on a desktop, the development packages of the display server, which SDL probes for. Neither is mandatory, and both can be turned off with `-DESP_LCD_HOST_SDL_X11=OFF` / `-DESP_LCD_HOST_SDL_WAYLAND=OFF`:
+
+  | Driver | Debian/Ubuntu packages |
+  | --- | --- |
+  | Wayland | `libwayland-dev wayland-protocols libxkbcommon-dev libegl-dev` |
+  | X11 | `libx11-dev libxext-dev` |
+
+  The libraries are loaded with `dlopen()` at run time, so they are needed to build, not to run. When the X11 packages are incomplete the X11 driver is left out of the build, it is not an error.
+- For a preview window on a local console: `libdrm`, `gbm` and `libegl`. SDL also needs EGL for the KMSDRM driver, which is why the port keeps the EGL check of SDL on.
+- Without any of these SDL keeps the dummy and offscreen video drivers, and the panel works as a framebuffer that is exported as a PNG file.
 
 ## Configuration
 
@@ -164,4 +174,4 @@ if (target == ESP_LCD_HOST_TARGET_POSIX) {
 - The panel never blocks: `draw_bitmap()` copies the pixels and returns. A GUI that relies on the transfer-done callback of a real panel should not expect an asynchronous notification.
 - The exported image shows the pixels submitted by the GUI, before any rotation, gap, mirroring or color inversion is applied.
 - 16bpp formats are exported through the RGB565 to RGB888 expansion, which loses precision.
-- A preview window needs a display and, on a local console, the KMSDRM driver of SDL. Without one, SDL window creation fails and the panel continues to work as a framebuffer only.
+- A preview window needs a display: SDL opens it through its X11 or Wayland driver on a desktop and through KMSDRM on a local console. Without a display, or in a build that turned the X11 and Wayland drivers off, SDL window creation fails and the panel continues to work as a framebuffer only.

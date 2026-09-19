@@ -63,24 +63,199 @@ set(SDL_GPU      OFF CACHE BOOL "Disable the SDL GPU subsystem"      FORCE)
 # ---------------------------------------------------------------------------
 # Video drivers the panel does not use.
 #
-# The video subsystem itself stays on (the panel needs a window surface), but
-# the only drivers that are kept are the offscreen and dummy ones, plus KMSDRM
-# when libdrm and EGL are present. Everything that needs X11, Wayland or a
-# GPU is turned off, which also removes its platform checks from the
-# configuration, so the build does not depend on the development packages
-# installed on the machine running CMake.
+# The video subsystem itself stays on (the panel needs a window surface). The
+# offscreen and dummy drivers are always kept, KMSDRM is built when libdrm, gbm
+# and EGL are present, and the X11 and Wayland drivers are enabled by default
+# because they are the ones that open the preview window on a normal desktop
+# (see the section below). Everything that needs a GPU or that is tied to a
+# board is turned off, which also removes its platform checks from the
+# configuration.
 # ---------------------------------------------------------------------------
 
-set(SDL_X11             OFF CACHE BOOL "Disable the X11 video driver"        FORCE)
-set(SDL_X11_SHARED      OFF CACHE BOOL "Disable the dynamically loaded X11"  FORCE)
-set(SDL_WAYLAND         OFF CACHE BOOL "Disable the Wayland video driver"    FORCE)
-set(SDL_WAYLAND_SHARED  OFF CACHE BOOL "Disable the dynamically loaded Wayland" FORCE)
 set(SDL_RPI             OFF CACHE BOOL "Disable the Raspberry Pi video driver"   FORCE)
 set(SDL_ROCKCHIP        OFF CACHE BOOL "Disable the Rockchip video driver"   FORCE)
 set(SDL_VIVANTE         OFF CACHE BOOL "Disable the Vivante video driver"    FORCE)
 set(SDL_OPENVR          OFF CACHE BOOL "Disable the OpenVR video driver"     FORCE)
 set(SDL_OFFSCREEN       ON  CACHE BOOL "Keep the offscreen video driver"     FORCE)
 set(SDL_DUMMYVIDEO      ON  CACHE BOOL "Keep the dummy video driver"         FORCE)
+
+# ---------------------------------------------------------------------------
+# Desktop window drivers: X11 and Wayland.
+#
+# The point of the component is to use the panel as a screen simulator, so the
+# preview window has to open on the machine the build runs on. That is why the
+# X11 and Wayland drivers are enabled by default: SDL probes for them, and
+# whichever one the machine has development packages for is compiled in. A
+# Wayland session needs the Wayland driver, an X11 session (or an XWayland
+# one) the X11 driver, so both are wanted and SDL picks the right one at run
+# time.
+#
+# Turning them off is still possible, for a build that must not depend on what
+# is installed on the build machine (CI passes both OFF):
+#
+#   -DESP_LCD_HOST_SDL_X11=OFF
+#   -DESP_LCD_HOST_SDL_WAYLAND=OFF
+#
+# The offscreen and dummy drivers always remain, so the panel keeps working as
+# a framebuffer on a machine without either.
+#
+# SDL declares these options with cmake_dependent_option(), which does not read
+# a plain cache value back: the  SDL_X11  entry written below is read as OFF,
+# because "SDL_X11" appears in the dependency list of the macro and is therefore
+# listed as unset for the next option. The macro does honour a value in the
+#  <OPTION>_ISSET  variable, so every option has to be set through that as well.
+# It has to be a cache entry, otherwise the nested project gets a fresh and
+# empty variable.
+# ---------------------------------------------------------------------------
+
+option(ESP_LCD_HOST_SDL_X11 "Build the SDL X11 video driver when X11 is available" ON)
+option(ESP_LCD_HOST_SDL_WAYLAND "Build the SDL Wayland video driver when Wayland is available" ON)
+
+# Sets SDL option <name> to <value>, in a way cmake_dependent_option() of SDL
+# picks up. The variable itself and its _ISSET companion go into the cache.
+function(esp_lcd_host_sdl_set_option name value)
+    set(${name} ${value} CACHE BOOL "SDL option set by the esp_lcd_host port" FORCE)
+    set(${name}_ISSET ${value} CACHE BOOL "SDL option set by the esp_lcd_host port" FORCE)
+endfunction()
+
+# Wayland is a plain opt-in: SDL probes for the Wayland packages and links them
+# when the option is on, and there is nothing to pin beforehand.
+esp_lcd_host_sdl_set_option(SDL_WAYLAND ${ESP_LCD_HOST_SDL_WAYLAND})
+
+# The X11 extensions of the driver.
+#
+# SDL treats each of them as all or nothing: when the option is on and its
+# headers or its library are missing, the configuration stops with a
+# FATAL_ERROR; when the option is off, the extension is left out of the build.
+#
+# The catch is that the X11 driver of SDL is not clean in that second case:
+#
+#   - SDL_x11toolkit.c has a `NOXRANDR:` label that is only reachable when
+#     SDL_VIDEO_DRIVER_X11_XRANDR is set, so with the option off the build fails
+#     with `label defined but not used`,
+#   - SDL_x11window.c keeps the `use_resize_sync` variable when the XSync option
+#     is off, which is an `unused variable`,
+#   - <X11/extensions/XInput2.h> includes <X11/extensions/Xfixes.h> for its
+#     PointerBarrier type, so XFixes is a dependency of XInput, not an add-on.
+#
+# The three cases above are fatal under the -Werror of the CI, so these three
+# are required in practice and the port only turns the X11 driver on when all of
+# them are available. The rest (Xcursor, Xdbe, XScrnSaver, XShape, XTest) are
+# probed for one by one and left off when they are not installed, which keeps a
+# machine with an incomplete set of X11 packages working.
+#
+# The probes use the same packages SDL looks for, so the port never asks for
+# more than SDL itself would.
+# ---------------------------------------------------------------------------
+
+find_package(X11 QUIET)
+
+# find_package(X11) only looks for the libraries: the headers have to be checked
+# on their own, or a system with the runtime packages but without the -dev ones
+# looks like a system that can build the driver. SDL checks the same two headers
+# before it compiles anything.
+find_path(_esp_lcd_host_x11_xlib_header NAMES X11/Xlib.h)
+find_path(_esp_lcd_host_x11_xext_header NAMES X11/extensions/Xext.h)
+
+if(NOT X11_FOUND OR NOT _esp_lcd_host_x11_xlib_header OR NOT _esp_lcd_host_x11_xext_header)
+    message(STATUS "esp_lcd_host: the X11 development packages are not installed, the X11 video driver is disabled")
+    set(_esp_lcd_host_x11_headers FALSE)
+else()
+    set(_esp_lcd_host_x11_headers TRUE)
+endif()
+
+# One entry per line: option, header, library. An empty library means the header
+# is enough.
+set(_esp_lcd_host_x11_extensions_required
+    "SDL_X11_XFIXES X11/extensions/Xfixes.h Xfixes"
+    "SDL_X11_XRANDR X11/extensions/Xrandr.h Xrandr"
+    "SDL_X11_XSYNC X11/extensions/sync.h Xext"
+)
+set(_esp_lcd_host_x11_extensions_optional
+    "SDL_X11_XCURSOR X11/Xcursor/Xcursor.h Xcursor"
+    "SDL_X11_XDBE X11/extensions/Xdbe.h Xext"
+    "SDL_X11_XINPUT X11/extensions/XInput2.h Xi"
+    "SDL_X11_XSCRNSAVER X11/extensions/scrnsaver.h Xss"
+    "SDL_X11_XSHAPE X11/extensions/shape.h "
+    "SDL_X11_XTEST X11/extensions/XTest.h Xtst"
+)
+
+set(_esp_lcd_host_x11_required_missing FALSE)
+set(_esp_lcd_host_x11_result)
+
+foreach(_group required optional)
+    foreach(_ext IN LISTS _esp_lcd_host_x11_extensions_${_group})
+        separate_arguments(_ext)
+        list(GET _ext 0 _ext_option)
+        list(GET _ext 1 _ext_header)
+        list(GET _ext 2 _ext_library)
+
+        set(_ext_found FALSE)
+        if(_esp_lcd_host_x11_headers)
+            find_path(${_ext_option}_INCLUDE_DIR NAMES "${_ext_header}")
+            if(${_ext_option}_INCLUDE_DIR)
+                if(NOT _ext_library)
+                    set(_ext_found TRUE)
+                else()
+                    find_library(${_ext_option}_LIBRARY NAMES "${_ext_library}")
+                    if(${_ext_option}_LIBRARY)
+                        set(_ext_found TRUE)
+                    endif()
+                endif()
+            endif()
+        endif()
+
+        if(_ext_found)
+            message(STATUS "esp_lcd_host: X11 ${_ext_option} available")
+        elseif(_group STREQUAL "required")
+            message(STATUS "esp_lcd_host: X11 ${_ext_option} is missing, the X11 video driver will not be built")
+            set(_esp_lcd_host_x11_required_missing TRUE)
+        else()
+            message(STATUS "esp_lcd_host: X11 ${_ext_option} is missing, it is disabled")
+        endif()
+
+        # <option> <found> , applied to SDL once the driver state is known.
+        set(_esp_lcd_host_x11_result "${_esp_lcd_host_x11_result}${_ext_option} ${_ext_found}|")
+    endforeach()
+endforeach()
+
+# The X11 driver itself is only built when it is wanted and complete: SDL probes
+# for it with find_package(X11), and the required extensions above are checked
+# here, because SDL cannot be asked to skip them.
+if(NOT ESP_LCD_HOST_SDL_X11 OR _esp_lcd_host_x11_required_missing)
+    esp_lcd_host_sdl_set_option(SDL_X11 OFF)
+else()
+    esp_lcd_host_sdl_set_option(SDL_X11 ON)
+endif()
+
+# The optional extensions are on when they were found and the driver is built.
+# The optional extensions are on when they were found and the driver is built.
+string(REPLACE "|" ";" _esp_lcd_host_x11_result "${_esp_lcd_host_x11_result}")
+foreach(_entry IN LISTS _esp_lcd_host_x11_result)
+    if(NOT _entry)
+        continue()
+    endif()
+    separate_arguments(_entry)
+    list(GET _entry 0 _ext_option)
+    list(GET _entry 1 _ext_found)
+
+    if(_ext_found AND SDL_X11)
+        esp_lcd_host_sdl_set_option(${_ext_option} ON)
+    else()
+        esp_lcd_host_sdl_set_option(${_ext_option} OFF)
+    endif()
+endforeach()
+
+# Load the X11 and Wayland libraries with dlopen() at run time. This is what a
+# desktop build normally does, and it keeps the executable independent of the
+# exact soname of those libraries. SDL only falls back to linking them directly
+# when SDL_DEPS_SHARED is off, which is not the case here, but then the shared
+# mode has to survive the dependency on SDL_X11 above, hence the same helper.
+esp_lcd_host_sdl_set_option(SDL_X11_SHARED ${SDL_X11})
+esp_lcd_host_sdl_set_option(SDL_WAYLAND_SHARED ON)
+
+esp_lcd_host_sdl_set_option(SDL_WAYLAND_LIBDECOR OFF)
+esp_lcd_host_sdl_set_option(SDL_WAYLAND_LIBDECOR_SHARED OFF)
 
 # The panel renders through the SDL software renderer, which is always built
 # with the video subsystem, so no GPU render driver is needed.
