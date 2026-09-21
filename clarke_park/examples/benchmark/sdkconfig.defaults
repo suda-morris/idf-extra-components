@@ -1,0 +1,8 @@
+# The numbers are only comparable when the compiler optimizes for speed and the
+# clock is fixed, so both are pinned here instead of taking the debug default
+# (-Og) and whatever the chip comes up with.
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+# Keep the CORDIC polling path and its engine handle in internal RAM, matching
+# the linker.lf placement of the rest of the timed call graph.
+CONFIG_CORDIC_ONESHOT_CTRL_FUNC_IN_IRAM=y

@@ -146,3 +146,8 @@ TEST_CASE("C _Generic API: IQ dispatch picks the backend from the Q-format",
     TEST_ASSERT_FLOAT_WITHIN(TEST_IQ_EPS, 1.0f, _IQ15toF(ab15.alpha));
     TEST_ASSERT_FLOAT_WITHIN(TEST_IQ_EPS, 0.0f, _IQ15toF(ab15.beta));
 }
+
+TEST_CASE("CORDIC controls exist on every target", "[clarke_park][sincos]")
+{
+    TEST_ESP_ERR(ESP_ERR_NOT_SUPPORTED, clarke_park_enable_cordic());
+}

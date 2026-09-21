@@ -1,0 +1,46 @@
+# Place the timed path in internal RAM so a plain CPU cycle count is not
+# inflated by instruction or data cache misses against flash.
+#
+# The noflash scheme puts .text in IRAM and .rodata in DRAM. Unused objects
+# are still dropped by --gc-sections; the rules only affect what is actually
+# linked.
+#
+# Two names are listed for the managed components: the namespaced archive
+# (espressif/foo -> libespressif__foo.a) and the local-directory name. Only
+# one of each pair exists in a given build; an archive-level mapping for a
+# missing archive is ignored.
+
+[mapping:bench_main]
+archive: libmain.a
+entries:
+    * (noflash)
+
+[mapping:bench_clarke_park]
+archive: libclarke_park.a
+entries:
+    * (noflash)
+
+[mapping:bench_clarke_park_ns]
+archive: libespressif__clarke_park.a
+entries:
+    * (noflash)
+
+[mapping:bench_iqmath]
+archive: libiqmath.a
+entries:
+    * (noflash)
+
+[mapping:bench_iqmath_ns]
+archive: libespressif__iqmath.a
+entries:
+    * (noflash)
+
+[mapping:bench_cordic]
+archive: libesp_driver_cordic.a
+entries:
+    * (noflash)
+
+[mapping:bench_cordic_hal]
+archive: libesp_hal_cordic.a
+entries:
+    * (noflash)
