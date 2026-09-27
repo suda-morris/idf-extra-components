@@ -14,49 +14,64 @@ The component builds for the ESP-IDF host target, which the manifest declares as
 
 The component vendors SDL3 as the git submodule [`esp_lcd_host/SDL`](SDL) and builds it with the CMake project SDL ships, through `add_subdirectory()` in `port/sdl/CMakeLists.txt`. It is not taken from the component registry, and reusing the SDL project keeps the source lists and the build configuration header in sync with the submodule instead of copying them here.
 
-The port reads the host platform from `CMAKE_SYSTEM_NAME` and then hands the platform specific work to the SDL project: SDL selects the window driver (**X11, Wayland or KMSDRM** on Linux, **Cocoa** on macOS, **Win32** on Windows), the thread back end and the platform sources on its own. Only the Linux desktop packages are probed, the results that depend on the build machine on macOS and Windows are the ones SDL already detects for those platforms.
+The port reads the host platform from `CMAKE_SYSTEM_NAME` and then hands the platform specific work to the SDL project. SDL selects the window driver, the thread back end, the file system back end and the platform sources on its own, and it probes the machine for everything that describes the platform: the C library, pthreads, inotify, the compiler, the X11 extensions, Wayland, KMSDRM and EGL. `port/sdl/CMakeLists.txt` does not repeat any of that, so updating the submodule is the only thing that can change it.
 
-Before adding the subdirectory, the port turns off what an LCD driver does not need and fixes the few results SDL would otherwise probe from the build machine:
+What the port does do, before the subdirectory is added:
 
-- the video, event, thread, timer and filesystem paths, with the software renderer,
-- the video drivers that open a window on a desktop: **X11 and Wayland**, plus **KMSDRM** when `libdrm`, `gbm` and EGL are installed (a window on a local console), plus the always available dummy and offscreen drivers for headless machines and CI,
-- no audio, camera, joystick, haptic, hidapi, sensor, power, dialog, tray or GPU subsystem, no GPU video driver, and none of the optional dependencies (Fribidi, libthai, D-Bus, IBus, libudev, liburing) SDL would otherwise pick up from the machine running CMake.
+- turn off the subsystems an LCD panel does not use, so SDL skips their sources, their checks and their configuration macros: audio, camera, joystick, haptic, hidapi, power, sensor, dialog, tray, GPU, and the board and GPU video drivers.
+- keep the video, event, thread, timer, file system and storage paths with the software renderer, plus the dummy and offscreen drivers that back the panel on a machine without a display.
+- select the window drivers that open the preview window. X11, Wayland and KMSDRM are on by default; SDL probes for the packages of each one and leaves the driver out when they are missing.
+- answer the checks whose result depends on the machine running CMake rather than on the platform. Those are the optional third party libraries SDL would otherwise pick up from whatever happens to be installed (Fribidi, libthai, D-Bus, IBus, libudev, liburing): the panel uses none of them, and probing for them would make the build machine dependent.
 
-The X11 and Wayland drivers are probed, not fixed: SDL looks for them with `pkg-config` and `find_package(X11)`, and each one is compiled in only when the build machine has its development packages. Which one is used is decided by SDL at run time, so the same binary works in a Wayland session (native Wayland), in an X11 session, and under XWayland.
+Everything the port keeps is a superset of what a desktop build of SDL would produce, so the only thing that can go wrong is more drivers being available than needed. The panel never selects a driver it does not ask for.
 
-An X11 driver that is half installed is handled too: the port probes the X11 packages before SDL does, so the driver is left out when they are incomplete instead of stopping the configuration, and the same for the X11 extensions SDL would otherwise require.
+### Window drivers
 
-Both are on by default, because a screen simulator is expected to open its preview window on the machine that builds it. They can be turned off for a build that must not depend on the build machine at all - it falls back to the dummy, offscreen and KMSDRM drivers, exactly like before:
+The point of the component is to use the panel as a screen simulator, so a preview window has to open on the machine that builds it. All three desktop drivers of SDL are enabled by default:
+
+| Driver | Option | Runs on |
+| --- | --- | --- |
+| Wayland | `ESP_LCD_HOST_SDL_WAYLAND` | a Wayland session, using the native Wayland back end |
+| X11 | `ESP_LCD_HOST_SDL_X11` | an X11 session and under XWayland |
+| KMSDRM | `ESP_LCD_HOST_SDL_KMSDRM` | a Linux console with access to the DRM device |
+
+Each one is compiled in only when the machine has its development packages, and SDL picks the right one at run time, so the same binary works in every session. Turning a driver off is what a build wants when it must not depend on the build machine at all:
 
 ```bash
 idf.py -DESP_LCD_HOST_SDL_X11=OFF -DESP_LCD_HOST_SDL_WAYLAND=OFF build
 ```
 
-This is what the CI of this repository does, so the Linux build there only depends on the toolchain in the `espressif/idf` image.
+A build without any of the three still produces a working panel: SDL keeps the dummy and offscreen drivers, and the panel works as a frame buffer that can be exported as a PNG file.
+
+SDL stops the configuration when the X11 driver is on and the X11 development packages are incomplete, and names the missing package and the option to turn off. Note that XInput2 and XFixes have to be turned off together, because SDL links XInput2 against XFixes.
+
+The drivers are loaded with `dlopen()` at run time, so the executable is not linked against them and a machine without a display server still runs the same binary.
 
 ### Host platforms
 
-| Host | Window driver | Packages for a preview window | Search order |
-| --- | --- | --- | --- |
-| Linux | X11, Wayland, KMSDRM | see the table below (Debian/Ubuntu names) | Wayland session, then X11/XWayland, then a DRM console |
-| macOS | Cocoa | none, the frameworks come with the system | system frameworks |
-| Windows | Win32 | none, the libraries come with the system | system libraries |
+| Host | Window driver | Packages for a preview window |
+| --- | --- | --- |
+| Linux | Wayland, X11, KMSDRM | see the table below (Debian/Ubuntu names) |
+| macOS | Cocoa | none, the frameworks come with the system |
+| Windows | Win32 | none, the libraries come with the system |
 
 On Linux the desktop packages that are needed for a preview window are:
 
 | Driver | Debian/Ubuntu packages |
 | --- | --- |
 | Wayland | `libwayland-dev wayland-protocols libxkbcommon-dev libegl-dev` |
-| X11 | `libx11-dev libxext-dev` |
+| X11 | `libx11-dev libxext-dev libxrandr-dev libxfixes-dev libxcursor-dev libxi-dev libxtst-dev libxss-dev` |
 | KMSDRM | `libdrm-dev libgbm-dev libegl-dev` |
 
-They are build time dependencies only: SDL loads X11 and Wayland with `dlopen()` at run time, so the executable is not linked against them and a machine without a display server still runs the same binary. Neither driver is required - without any of them the panel falls back to the offscreen driver and keeps working as an exportable framebuffer, which is what CI does.
+They are build time dependencies only: SDL loads the drivers with `dlopen()` at run time.
 
-On macOS and Windows the native window driver is part of the SDL platform support and needs no extra package, so a preview window works out of the box there.
+The Linux desktop drivers are verified. The macOS and Windows branches of the port only select the window driver of the platform through the SDL project; no runner in this repository builds them, so treat them as unverified until one does.
 
-SDL generates `SDL_build_config.h` during the build, so the port does not carry a hand written configuration.
+### The generated configuration
 
-Because SDL is built from the submodule, the component has no dependency other than ESP-IDF:
+SDL generates `SDL_build_config.h` during the build, so the port does not carry a hand written configuration. The port also does not carry a source list: `port/sdl/CMakeLists.txt` and `port/src/sdl_port_stubs.c` are the only files to review when the submodule is updated.
+
+Because SDL is built from the submodule, the component has no dependency other than ESP-IDF and `espressif/libpng`:
 
 - the same `idf.py build` builds SDL and the panel, and nothing is downloaded at build time,
 - there is no board support layer that would install a display of its own.

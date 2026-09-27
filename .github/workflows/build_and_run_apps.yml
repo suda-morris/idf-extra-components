@@ -157,10 +157,11 @@ jobs:
           pip install --upgrade 'idf-build-apps~=2.12'
       - name: Install the desktop packages for the SDL panel
         shell: bash
-        # esp_lcd_host builds the X11 and Wayland drivers of SDL when their
-        # development packages are present, so install them here to exercise
-        # that path. The build has to succeed without them as well, which is
-        # what the espressif/idf image does by default.
+        # esp_lcd_host builds the wayland, X11 and KMSDRM drivers of SDL when
+        # their development packages are present, so install them here to
+        # exercise that path. The packages are not needed for the build to
+        # succeed: without them SDL leaves the drivers out and the panel falls
+        # back to the offscreen and dummy drivers.
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
