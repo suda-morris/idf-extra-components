@@ -8,11 +8,13 @@
 - the GUI code stays untouched, because the panel implements the generic `esp_lcd_panel_t` interface used by every LCD driver,
 - the rendered frame can be saved as a PNG file and compared against a golden image in CI.
 
-The component only builds for the ESP-IDF host (`linux`) target. The manifest of the component declares that target, so the component manager rejects the dependency for a real chip instead of failing later in the build.
+The component builds for the ESP-IDF host target, which the manifest declares as `linux`. `linux` is the name ESP-IDF gives that target on **every** operating system - it does not mean that the component needs the Linux kernel. The same component builds and runs natively on **Linux, macOS and Windows**; declaring the target only makes the component manager reject the dependency for a real chip instead of failing later in the build.
 
 ## SDL
 
 The component vendors SDL3 as the git submodule [`esp_lcd_host/SDL`](SDL) and builds it with the CMake project SDL ships, through `add_subdirectory()` in `port/sdl/CMakeLists.txt`. It is not taken from the component registry, and reusing the SDL project keeps the source lists and the build configuration header in sync with the submodule instead of copying them here.
+
+The port reads the host platform from `CMAKE_SYSTEM_NAME` and then hands the platform specific work to the SDL project: SDL selects the window driver (**X11, Wayland or KMSDRM** on Linux, **Cocoa** on macOS, **Win32** on Windows), the thread back end and the platform sources on its own. Only the Linux desktop packages are probed, the results that depend on the build machine on macOS and Windows are the ones SDL already detects for those platforms.
 
 Before adding the subdirectory, the port turns off what an LCD driver does not need and fixes the few results SDL would otherwise probe from the build machine:
 
@@ -32,7 +34,15 @@ idf.py -DESP_LCD_HOST_SDL_X11=OFF -DESP_LCD_HOST_SDL_WAYLAND=OFF build
 
 This is what the CI of this repository does, so the Linux build there only depends on the toolchain in the `espressif/idf` image.
 
-The packages that are needed for a preview window on a desktop:
+### Host platforms
+
+| Host | Window driver | Packages for a preview window | Search order |
+| --- | --- | --- | --- |
+| Linux | X11, Wayland, KMSDRM | see the table below (Debian/Ubuntu names) | Wayland session, then X11/XWayland, then a DRM console |
+| macOS | Cocoa | none, the frameworks come with the system | system frameworks |
+| Windows | Win32 | none, the libraries come with the system | system libraries |
+
+On Linux the desktop packages that are needed for a preview window are:
 
 | Driver | Debian/Ubuntu packages |
 | --- | --- |
@@ -41,6 +51,8 @@ The packages that are needed for a preview window on a desktop:
 | KMSDRM | `libdrm-dev libgbm-dev libegl-dev` |
 
 They are build time dependencies only: SDL loads X11 and Wayland with `dlopen()` at run time, so the executable is not linked against them and a machine without a display server still runs the same binary. Neither driver is required - without any of them the panel falls back to the offscreen driver and keeps working as an exportable framebuffer, which is what CI does.
+
+On macOS and Windows the native window driver is part of the SDL platform support and needs no extra package, so a preview window works out of the box there.
 
 SDL generates `SDL_build_config.h` during the build, so the port does not carry a hand written configuration.
 
@@ -66,7 +78,7 @@ dependencies:
 
 Then run `idf.py reconfigure` or build the project.
 
-> The component requires the `linux` target and ESP-IDF `>= 6.0.0`.
+> The component requires the ESP-IDF host (`linux`) target and ESP-IDF `>= 6.0.0`. The host target exists on Linux, macOS and Windows.
 
 ## Quick start
 
@@ -136,8 +148,8 @@ The application and the test both run on the host, so the test reads the PNG fil
 
 ## Notes and limitations
 
-- The component only supports the `linux` target. There is no driver for a real display controller, use an `esp_lcd_*` panel driver for that.
+- The component only supports the ESP-IDF host (`linux`) target, on Linux, macOS and Windows. There is no driver for a real display controller, use an `esp_lcd_*` panel driver for that.
 - The panel stores the pixels submitted by the GUI, so rotation, gap, mirroring and color inversion are not applied to the exported image. The same is true for the preview window.
 - A frame may consist of several partial flushes. Export or publish the panel content only after the refresh you want is finished (for example after a synchronous `lv_refr_now()`).
-- A preview window needs a display: SDL opens it through its X11 or Wayland driver on a desktop, and through KMSDRM on a local console with access to the DRM device. Everywhere else, including a build without the X11 and Wayland development packages, SDL falls back to the dummy and offscreen drivers, and the panel keeps working as a framebuffer that can be exported as a PNG file.
+- A preview window needs a display: SDL opens it through the native driver of the platform (X11, Wayland or Cocoa on a desktop, KMSDRM on a Linux console with access to the DRM device, Win32 on Windows). Everywhere else, including a build without the X11 and Wayland development packages, SDL falls back to the dummy and offscreen drivers, and the panel keeps working as a framebuffer that can be exported as a PNG file.
 - Preview scaling is handled by SDL. The exported PNG always uses the panel resolution.

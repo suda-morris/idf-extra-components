@@ -8,18 +8,28 @@
  *
  * The panel is a regular esp_lcd panel that lives in the process of the
  * application: the SDL backend renders the framebuffer of the panel into a
- * window of the ESP-IDF host (Linux) target, and it can export that framebuffer
+ * window of the ESP-IDF host (POSIX) target, and it can export that framebuffer
  * as a PNG file, which is how a host test verifies the rendered frame.
  */
 #include <stdlib.h>
 #include <string.h>
-#include <sys/param.h>
 #include "esp_lcd_host_types.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_lcd_host_panel.h"
 
 static const char *TAG = "lcd_host";
+
+/* The host target is built for Linux, macOS and Windows, and the MIN/MAX macros
+ * that <sys/param.h> provides on the C libraries of the first two are not part
+ * of the C standard. Define them here instead of relying on a header that MSVC
+ * does not have. */
+#ifndef MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+#ifndef MAX
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif
 
 /*
  * esp_lcd_panel_t must be the first member so the object can be exposed as a

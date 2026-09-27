@@ -91,9 +91,9 @@ Two files of the port are worth knowing about:
 
 ## Prerequisites
 
-- The ESP-IDF host (`linux`) target, ESP-IDF `>= 6.0.0`.
+- The ESP-IDF host (`linux`) target and ESP-IDF `>= 6.0.0`. `linux` is the name ESP-IDF gives the host target on every operating system, so this component builds on Linux, macOS and Windows alike.
 - The checkout of the `esp_lcd_host/SDL` submodule for the sources of SDL.
-- For a preview window on a desktop, the development packages of the display server, which SDL probes for. Neither is mandatory, and both can be turned off with `-DESP_LCD_HOST_SDL_X11=OFF` / `-DESP_LCD_HOST_SDL_WAYLAND=OFF`:
+- For a preview window on Linux, the development packages of the display server, which SDL probes for. Neither is mandatory, and both can be turned off with `-DESP_LCD_HOST_SDL_X11=OFF` / `-DESP_LCD_HOST_SDL_WAYLAND=OFF`. On macOS and Windows the native window driver (Cocoa, Win32) needs no extra package:
 
   | Driver | Debian/Ubuntu packages |
   | --- | --- |
@@ -158,7 +158,7 @@ An application without an LVGL task pumps the window from its own loop, which is
 
 ## Target detection
 
-`esp_lcd_host_get_target()` reports what the panel runs on. The component only builds for the ESP-IDF host (`linux`) target, so the call always reports `ESP_LCD_HOST_TARGET_POSIX` here. It is useful for code that wants to adapt the simulation, for example to slow down animation ticks so the frames stay readable:
+`esp_lcd_host_get_target()` reports what the panel runs on. The component only builds for the ESP-IDF host (`linux`) target, so the call always reports `ESP_LCD_HOST_TARGET_POSIX` here, on every operating system. It is useful for code that wants to adapt the simulation, for example to slow down animation ticks so the frames stay readable:
 
 ```c
 esp_lcd_host_target_t target = ESP_LCD_HOST_TARGET_ESP32;
@@ -170,8 +170,8 @@ if (target == ESP_LCD_HOST_TARGET_POSIX) {
 
 ## Limitations
 
-- The component only supports the `linux` target. Use the `esp_lcd_*` panel driver of the display controller for a real chip.
+- The component only supports the ESP-IDF host (`linux`) target, on Linux, macOS and Windows. Use the `esp_lcd_*` panel driver of the display controller for a real chip.
 - The panel never blocks: `draw_bitmap()` copies the pixels and returns. A GUI that relies on the transfer-done callback of a real panel should not expect an asynchronous notification.
 - The exported image shows the pixels submitted by the GUI, before any rotation, gap, mirroring or color inversion is applied.
 - 16bpp formats are exported through the RGB565 to RGB888 expansion, which loses precision.
-- A preview window needs a display: SDL opens it through its X11 or Wayland driver on a desktop and through KMSDRM on a local console. Without a display, or in a build that turned the X11 and Wayland drivers off, SDL window creation fails and the panel continues to work as a framebuffer only.
+- A preview window needs a display: SDL opens it through the native driver of the platform (X11, Wayland or Cocoa on a desktop, KMSDRM on a Linux console, Win32 on Windows). Without a display, or in a build that turned the X11 and Wayland drivers off, SDL window creation fails and the panel continues to work as a framebuffer only.

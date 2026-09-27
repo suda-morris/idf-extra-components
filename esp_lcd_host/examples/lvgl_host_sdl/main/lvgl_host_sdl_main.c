@@ -88,13 +88,25 @@ void app_main(void)
         .height = EXAMPLE_LCD_V_RES,
         /* LVGL's RGB888 buffer is stored as B, G, R in memory. */
         .color_format = ESP_COLOR_FOURCC_BGR24,
-        /* Set to false on a machine without a display, for example in CI. */
+        /* A preview window needs a display. The example is also run on a
+         * headless machine (the CI), so a failure to open the window is not
+         * fatal: the panel falls back to a framebuffer that still renders and
+         * exports the frame. Set this to false to never open a window. */
         .create_window = true,
         .scale = 2,
         .window_title = "esp_lcd_host example",
     };
     esp_lcd_panel_handle_t panel = NULL;
-    ESP_ERROR_CHECK(esp_lcd_new_panel_host_sdl(&panel_config, &panel));
+    esp_err_t err = esp_lcd_new_panel_host_sdl(&panel_config, &panel);
+    /* ESP_FAIL is what the SDL backend returns when it cannot create the window
+     * or its surface, which is the expected outcome on a machine without a
+     * display. Any other error is a real problem and is not retried. */
+    if (err == ESP_FAIL) {
+        ESP_LOGW(TAG, "No preview window available, continue with a framebuffer only panel");
+        panel_config.create_window = false;
+        err = esp_lcd_new_panel_host_sdl(&panel_config, &panel);
+    }
+    ESP_ERROR_CHECK(err);
 
     /* A GUI port would place these calls in board_init() and switch to
      * esp_lcd_new_panel_host_sdl() only for the host build. */

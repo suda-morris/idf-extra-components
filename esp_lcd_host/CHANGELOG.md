@@ -12,4 +12,6 @@
 - `esp_lcd_host_screenshot_save_png()` streams scanlines into a PNG file via libpng `png_write_row` (no extra full-frame RGB buffer)
 - `esp_lcd_host_return_panel()` and `esp_lcd_host_return_buffers()` publish the latest frame to the SDL backend
 - `esp_lcd_host_get_target()` reports whether the application runs on the host (POSIX) target or on a chip
-- The component manifest restricts the component to the `linux` target, it is a host simulation only
+- The component manifest restricts the component to the `linux` target, it is a host simulation only. `linux` is the name ESP-IDF gives the host target on every operating system, so the component builds on Linux, macOS and Windows: `port/sdl/CMakeLists.txt` reads the platform from `CMAKE_SYSTEM_NAME` and lets SDL select the window driver (X11, Wayland or KMSDRM on Linux, Cocoa on macOS, Win32 on Windows), the thread back end and the platform sources. Only the Linux desktop packages are probed, and `src/esp_lcd_host.c` no longer depends on `<sys/param.h>`
+- The X11 probe of `port/sdl/CMakeLists.txt` requires XInput2 together with XFixes, because SDL stops the configuration when XFixes is enabled and XInput2 is not; a machine with an incomplete set of X11 packages now loses the X11 driver instead of failing to configure
+- The example falls back to a framebuffer only panel when the preview window cannot be created, so it also runs on a headless machine

@@ -13,7 +13,7 @@ The screen is rendered once, without an LVGL task or tick timer. Keeping the UI 
 
 ## Build and run
 
-The panel is simulated on the machine running the application, so the example builds for the ESP-IDF `linux` target:
+The panel is simulated on the machine running the application, so the example builds for the ESP-IDF host target, which is called `linux` on every operating system (Linux, macOS and Windows):
 
 ```bash
 git submodule update --init --recursive ../../SDL
@@ -22,7 +22,9 @@ idf.py build
 ./build/lvgl_host_sdl.elf
 ```
 
-A window with the rendered screen appears, the frame is written to `screenshot.png` in the working directory and the application exits. Set `create_window` to `false` in [`main/lvgl_host_sdl_main.c`](main/lvgl_host_sdl_main.c) to run without a display, for example on a CI machine.
+A window with the rendered screen appears, the frame is written to `screenshot.png` in the working directory and the application exits.
+
+The example asks for a preview window but does not depend on one: when no display is available (a CI machine, a remote shell, or a build without the X11 and Wayland packages) the window cannot be created, so the application logs a warning and creates the panel with `create_window = false` instead. The render and the PNG export work the same way, which is what lets the CI run the example. Set `create_window` to `false` in [`main/lvgl_host_sdl_main.c`](main/lvgl_host_sdl_main.c) to never open a window.
 
 The output contains messages similar to:
 

@@ -1,5 +1,6 @@
 # The example is a host simulation: the panel lives in the process memory of the
-# Linux target, and SDL renders it into a window instead of an external display.
+# ESP-IDF host target, and SDL renders it into a window instead of an external
+# display. "linux" is the name of that target on every operating system.
 CONFIG_IDF_TARGET="linux"
 
 # LVGL renders into an RGB888 framebuffer (B, G, R in memory, matching
