@@ -296,6 +296,17 @@ if(ESP_LCD_HOST_OS STREQUAL "LINUX")
     endif()
 endif()
 
+# SDL and the ESP-IDF build system both vendor the same include-guarded
+# GetGitRevisionDescription module. The build system includes its copy first,
+# so the guard variable is already set here and the include of the SDL copy
+# would return early: the git_describe() that stays active is then the one of
+# the build system, which takes a second argument that the SDL project does not
+# pass, and the SDL configuration fails with "Function invoked with incorrect
+# arguments". Clear the guard so the SDL project registers its own copy. The
+# function definitions of a subdirectory do not leak back into the build
+# system, so this only affects the SDL project itself.
+unset(__get_git_revision_description)
+
 # Add the submodule as a subdirectory. Its CMake project generates
 # SDL_build_config.h from include/build_config/SDL_build_config.h.cmake with the
 # options and the check results above, selects the sources and the video driver

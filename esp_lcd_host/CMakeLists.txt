@@ -7,13 +7,22 @@
 # and this way it can build SDL with the subsystems the LCD driver needs, and
 # without the board support packages of the registry component. See
 # port/sdl/CMakeLists.txt.
-add_subdirectory("port/sdl")
+# The SDL submodule is added as a CMake subdirectory. `add_subdirectory()` is
+# not available in script mode, and the build system includes this file in
+# script mode once to collect the component requirements before the real build,
+# so only add it (and the target that it defines) in the real build.
+if(NOT CMAKE_BUILD_EARLY_EXPANSION)
+    add_subdirectory("port/sdl")
+endif()
 
 idf_component_register(SRCS "src/esp_lcd_host.c"
                             "src/esp_lcd_host_panel_ops.c"
                             "src/esp_lcd_host_screenshot.c"
+                            "src/esp_lcd_host_sdl_backend.c"
                        INCLUDE_DIRS "include"
                        PRIV_INCLUDE_DIRS "src"
                        PRIV_REQUIRES esp_lcd)
 
-target_link_libraries(${COMPONENT_LIB} PRIVATE SDL3::SDL3)
+if(NOT CMAKE_BUILD_EARLY_EXPANSION)
+    target_link_libraries(${COMPONENT_LIB} PRIVATE SDL3::SDL3)
+endif()

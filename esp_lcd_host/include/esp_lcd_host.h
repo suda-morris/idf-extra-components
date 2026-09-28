@@ -116,11 +116,36 @@ esp_err_t esp_lcd_host_return_buffers(esp_lcd_panel_handle_t panel);
  * per LVGL timer handler) while a preview window is open. Without a window the
  * call only pumps the event queue.
  *
+ * The call also drains the SDL event queue and destroys a preview window when
+ * the user closes it, otherwise the close request would go unnoticed and a
+ * dead window would stay on screen. Check esp_lcd_host_window_close_requested()
+ * afterwards to stop rendering when the user is done.
+ *
  * @return
  *      - ESP_OK: all preview windows were updated
  *      - ESP_FAIL: an SDL error occurred, use SDL_GetError() for details
  */
 esp_err_t esp_lcd_host_pump_events(void);
+
+/**
+ * @brief Whether the user closed a preview window
+ *
+ * The flag is set when the user closes any preview window of the process (or
+ * quits the application through the window manager) and then stays set, so a
+ * periodic check cannot miss it. A typical host application loop stops
+ * rendering and tears the panel down once this returns true:
+ * @code
+ * while (!esp_lcd_host_window_close_requested()) {
+ *     esp_lcd_host_pump_events();
+ *     lv_timer_handler();
+ * }
+ * @endcode
+ * The panel framebuffer keeps working after the window is gone, so a final
+ * esp_lcd_host_screenshot_save_png() still captures the last frame.
+ *
+ * @return true if a preview window was closed by the user, false otherwise
+ */
+bool esp_lcd_host_window_close_requested(void);
 
 /**
  * @brief Save the current panel content to a file in PNG format

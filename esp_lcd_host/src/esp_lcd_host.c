@@ -48,6 +48,7 @@ typedef struct {
 } host_panel_t;
 
 static esp_err_t host_panel_del(esp_lcd_panel_t *panel);
+static esp_err_t host_panel_init(esp_lcd_panel_t *panel);
 static esp_err_t host_panel_draw_bitmap(esp_lcd_panel_t *panel, int x_start, int y_start,
                                         int x_end, int y_end, const void *color_data);
 static esp_err_t host_panel_draw_bitmap_2d(esp_lcd_panel_t *panel, int x_start, int y_start, int x_end, int y_end,
@@ -98,11 +99,12 @@ esp_err_t esp_lcd_new_panel_host_sdl(const esp_lcd_host_config_t *config, esp_lc
                       err, TAG, "failed to create SDL backend");
 
     host_panel->base.del = host_panel_del;
-    /* reset() and init() are optional in the panel interface, so a NULL
-     * callback lets the generic esp_lcd wrappers report success and the caller
-     * drive the panel through the usual lifecycle. */
+    /* init() is mandatory in the esp_lcd panel interface (the generic wrapper
+     * calls the callback without a NULL check), reset() is optional and stays
+     * NULL: the generic esp_lcd wrappers report ESP_ERR_NOT_SUPPORTED for it
+     * and the application can simply continue. */
     host_panel->base.reset = NULL;
-    host_panel->base.init = NULL;
+    host_panel->base.init = host_panel_init;
     host_panel->base.draw_bitmap = host_panel_draw_bitmap;
     host_panel->base.draw_bitmap_2d = host_panel_draw_bitmap_2d;
     host_panel->base.disp_on_off = NULL;
@@ -165,6 +167,15 @@ static esp_err_t host_panel_del(esp_lcd_panel_t *panel)
     esp_lcd_host_sdl_backend_delete(drv->sdl_ctx);
     free(drv->framebuffer);
     free(drv);
+    return ESP_OK;
+}
+
+static esp_err_t host_panel_init(esp_lcd_panel_t *panel)
+{
+    host_panel_t *drv = __containerof(panel, host_panel_t, base);
+    /* Power-on state of the simulated panel: every pixel off (a zeroed
+     * framebuffer is black in all supported color formats). */
+    memset(drv->framebuffer, 0, drv->framebuffer_size);
     return ESP_OK;
 }
 

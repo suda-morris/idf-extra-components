@@ -119,12 +119,22 @@ ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
 // Configure your GUI library to render/flush into `panel`.
 ```
 
-Replace the panel creation in the board initialization of your GUI with the snippet above to move a display to the host. The rest of the GUI code, including the LVGL flush callback that calls `esp_lcd_panel_draw_bitmap()`, does not change.
+Replace the panel creation in the board initialization of your GUI with the snippet above to move a display to the host. The rest of the GUI code, including the LVGL flush callback that calls `esp_lcd_panel_draw_bitmap()`, does not change. Note that `esp_lcd_panel_reset()` is optional for this panel and reports `ESP_ERR_NOT_SUPPORTED`; the call is safe to make, just do not abort on that one error.
 
-While a preview window is open, pump its event queue periodically, for example from the LVGL timer handler:
+While a preview window is open, pump its event queue periodically, for example from the LVGL timer handler. The call presents the latest frame in every preview window and destroys a window when the user closes it:
 
 ```c
 ESP_ERROR_CHECK(esp_lcd_host_pump_events());
+```
+
+Check `esp_lcd_host_window_close_requested()` afterwards and stop the application when the user is done:
+
+```c
+while (!esp_lcd_host_window_close_requested()) {
+    ESP_ERROR_CHECK(esp_lcd_host_pump_events());
+    lv_timer_handler();          // your GUI tick
+    lv_delay_ms(16);
+}
 ```
 
 ### Save the rendered frame
