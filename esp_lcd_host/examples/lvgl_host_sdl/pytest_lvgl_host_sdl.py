@@ -10,6 +10,7 @@ conversion is involved.
 """
 
 import logging
+import os
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,13 @@ from pathlib import Path
 import pytest
 from pytest_embedded import Dut
 from pytest_embedded_idf.utils import idf_parametrize
+
+# The example opens its preview window only when the machine has a display and
+# then stays open until the window is closed, which would block this test on a
+# desktop. Naming a video driver that does not exist makes the SDL window
+# creation fail, so the run always takes the deterministic headless path (the
+# panel falls back to a framebuffer) no matter where the test runs.
+os.environ.setdefault('SDL_VIDEODRIVER', 'nonexistent')
 
 PNG_NAME = 'screenshot.png'
 GOLDEN_NAME = 'golden_result.png'

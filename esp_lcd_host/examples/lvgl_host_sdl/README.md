@@ -5,24 +5,24 @@ This example renders an LVGL screen into an `esp_lcd_host` panel, so the GUI can
 ## What the example does
 
 1. Creates a 240 x 240 `ESP_COLOR_FOURCC_BGR24` panel, with a 2x scaled SDL preview window.
-2. Registers the panel as an LVGL display and renders a static screen with a title, a chart and a button.
-3. Saves the rendered frame as `screenshot.png` through the component and exits.
-4. Uses a pytest script that reads that PNG file and compares it with the committed `golden_result.png`.
+2. Registers the panel as an LVGL display (with the host tick source from `esp_timer`) and renders a static screen with a title, a chart and a button.
+3. When the preview window opened, keeps running and refreshing it until the user closes the window. When the machine has no display, it waits for the frame to reach the framebuffer and stops after a few frames.
+4. Saves the rendered frame as `screenshot.png` through the component and exits.
+5. A pytest script reads that PNG file and compares it with the committed `golden_result.png`.
 
-The screen is rendered once, without an LVGL task or tick timer. Keeping the UI static makes the output deterministic and suitable for golden-image testing.
+Keeping the UI static makes the output deterministic and suitable for golden-image testing; the interactive part is only the preview loop.
 
 ## Build and run
 
-The panel is simulated on the machine running the application, so the example builds for the ESP-IDF host target, which is called `linux` on every operating system (Linux, macOS and Windows):
+The panel is simulated on the machine running the application, so the example builds for the ESP-IDF host target, which is called `linux` on every operating system (Linux, macOS and Windows). The build system skips the `flash` step for this target and `monitor` runs the binary, so the usual workflow works unchanged:
 
 ```bash
 git submodule update --init --recursive ../../SDL
-idf.py set-target linux
-idf.py build
-./build/lvgl_host_sdl.elf
+idf.py --preview set-target linux
+idf.py build flash monitor
 ```
 
-A window with the rendered screen appears, the frame is written to `screenshot.png` in the working directory and the application exits.
+A window with the rendered screen appears on the desktop. Closing its title bar button stops the example: the frame is written to `screenshot.png` in the working directory and the application exits (which also ends `idf.py monitor`). The binary can also be run directly as `./build/lvgl_host_sdl.elf`.
 
 The example asks for a preview window but does not depend on one: when no display is available (a CI machine, a remote shell, or a build without the X11 and Wayland packages) the window cannot be created, so the application logs a warning and creates the panel with `create_window = false` instead. The render and the PNG export work the same way, which is what lets the CI run the example. Set `create_window` to `false` in [`main/lvgl_host_sdl_main.c`](main/lvgl_host_sdl_main.c) to never open a window.
 
@@ -32,9 +32,11 @@ The output contains messages similar to:
 I (350) example: Install the SDL host LCD panel driver
 I (360) lcd_host: Host SDL panel created (240x240, with preview window)
 I (370) lcd_host.sdl: preview window 'esp_lcd_host example' created (480x480, scale 2)
-I (900) example: Save the rendered frame as a PNG file
-I (950) lcd_host.shot: Saved 240x240 PNG image (3269 bytes) to 'screenshot.png'
-I (960) example: LVGL host SDL example done.
+I (380) example: Close the preview window to stop the example
+I (940) lcd_host.sdl: preview window closed by the user
+I (950) example: Save the rendered frame as a PNG file
+I (960) lcd_host.shot: Saved 240x240 PNG image (5034 bytes) to 'screenshot.png'
+I (970) example: LVGL host SDL example done.
 ```
 
 ## Automated verification

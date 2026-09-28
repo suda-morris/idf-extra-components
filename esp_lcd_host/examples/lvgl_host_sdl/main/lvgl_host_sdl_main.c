@@ -18,6 +18,9 @@
 
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "lvgl.h"
 
 #include "esp_lcd_host.h"
@@ -26,12 +29,30 @@
 #define EXAMPLE_LCD_V_RES       240
 #define EXAMPLE_DRAW_BUF_LINES  40
 #define EXAMPLE_PNG_PATH        "screenshot.png"
-/* The frame is rendered once, so the application stops after this many
- * esp_lcd_host_pump_events() calls. */
+/* Without a preview window (headless machine) the frame is rendered once and
+ * the application stops after this many esp_lcd_host_pump_events() calls. */
 #define EXAMPLE_PUMP_FRAMES     5
 #define EXAMPLE_PUMP_PERIOD_MS  100
+/* With a preview window the application keeps running until the user closes
+ * it. The frame is redrawn when LVGL asks for it, so this is the tick of the
+ * preview (and of any LVGL timer) in a windowed run. */
+#define EXAMPLE_FRAME_PERIOD_MS 16
 
 static const char *TAG = "example";
+
+/* LVGL needs a time source. On a chip it comes from a hardware timer; on the
+ * host build the monotonic esp_timer provides it. */
+static uint32_t example_tick_cb(void)
+{
+    return (uint32_t)(esp_timer_get_time() / 1000ULL);
+}
+
+/* lv_delay_ms() busy-waits on the tick by default; hand it a real sleep so the
+ * waiting task yields to the other tasks of the system. */
+static void example_delay_cb(uint32_t ms)
+{
+    vTaskDelay(pdMS_TO_TICKS(ms));
+}
 
 /*
  * LVGL calls this function whenever a part of the screen is ready to be
@@ -98,23 +119,32 @@ void app_main(void)
     };
     esp_lcd_panel_handle_t panel = NULL;
     esp_err_t err = esp_lcd_new_panel_host_sdl(&panel_config, &panel);
+    bool with_window = true;
     /* ESP_FAIL is what the SDL backend returns when it cannot create the window
      * or its surface, which is the expected outcome on a machine without a
      * display. Any other error is a real problem and is not retried. */
     if (err == ESP_FAIL) {
         ESP_LOGW(TAG, "No preview window available, continue with a framebuffer only panel");
         panel_config.create_window = false;
+        with_window = false;
         err = esp_lcd_new_panel_host_sdl(&panel_config, &panel);
     }
     ESP_ERROR_CHECK(err);
 
     /* A GUI port would place these calls in board_init() and switch to
-     * esp_lcd_new_panel_host_sdl() only for the host build. */
-    ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
+     * esp_lcd_new_panel_host_sdl() only for the host build. Reset is an
+     * optional panel operation: the host panel has no hardware to reset and
+     * reports ESP_ERR_NOT_SUPPORTED, which is fine to continue after. */
+    err = esp_lcd_panel_reset(panel);
+    if (err != ESP_OK && err != ESP_ERR_NOT_SUPPORTED) {
+        ESP_ERROR_CHECK(err);
+    }
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
 
     ESP_LOGI(TAG, "Initialize LVGL library");
     lv_init();
+    lv_tick_set_cb(example_tick_cb);
+    lv_delay_set_cb(example_delay_cb);
 
     ESP_LOGI(TAG, "Register display driver to LVGL");
     lv_display_t *display = lv_display_create(EXAMPLE_LCD_H_RES, EXAMPLE_LCD_V_RES);
@@ -132,10 +162,20 @@ void app_main(void)
     lv_refr_now(display);
 
     /* This is an application and not an LVGL port with a task loop, so pump the
-     * preview window from here until the frame is on screen. */
-    for (int i = 0; i < EXAMPLE_PUMP_FRAMES; i++) {
-        ESP_ERROR_CHECK(esp_lcd_host_pump_events());
-        lv_delay_ms(EXAMPLE_PUMP_PERIOD_MS);
+     * preview window from here. With a window the application stays open until
+     * the user closes it; on a headless machine it just waits for the frame to
+     * reach the framebuffer and stops (the CI compares screenshot.png). */
+    if (with_window) {
+        ESP_LOGI(TAG, "Close the preview window to stop the example");
+        while (!esp_lcd_host_window_close_requested()) {
+            ESP_ERROR_CHECK(esp_lcd_host_pump_events());
+            lv_delay_ms(EXAMPLE_FRAME_PERIOD_MS);
+        }
+    } else {
+        for (int i = 0; i < EXAMPLE_PUMP_FRAMES; i++) {
+            ESP_ERROR_CHECK(esp_lcd_host_pump_events());
+            lv_delay_ms(EXAMPLE_PUMP_PERIOD_MS);
+        }
     }
 
     ESP_LOGI(TAG, "Save the rendered frame as a PNG file");
