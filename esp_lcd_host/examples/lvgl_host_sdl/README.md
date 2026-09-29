@@ -14,7 +14,7 @@ Keeping the UI static makes the output deterministic and suitable for golden-ima
 
 ## Build and run
 
-The panel is simulated on the machine running the application, so the example builds for the ESP-IDF host target, which is called `linux` on every operating system (Linux, macOS and Windows). The build system skips the `flash` step for this target and `monitor` runs the binary, so the usual workflow works unchanged:
+The panel is simulated on the machine running the application, so the example builds for the ESP-IDF host target, which is called `linux` on the operating systems the target supports (Linux and macOS). The build system skips the `flash` step for this target and `monitor` runs the binary, so the usual workflow works unchanged:
 
 ```bash
 git submodule update --init --recursive ../../SDL

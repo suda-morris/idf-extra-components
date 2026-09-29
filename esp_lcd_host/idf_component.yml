@@ -6,9 +6,9 @@ issues: https://github.com/espressif/idf-extra-components/issues
 # The component is a host simulation only: the panel renders through the SDL
 # that is vendored in the component.
 #
-# "linux" is the name of the ESP-IDF host target. It is the same name on every
-# operating system, so it also covers the macOS and Windows host builds of this
-# component; it does not mean that the component needs the Linux kernel.
+# "linux" is the name of the ESP-IDF host target. It is the same name on the
+# Linux and macOS hosts that the target supports; it does not mean that the
+# component needs the Linux kernel.
 # Restrict the component to that target so the dependency solver rejects it for
 # real chips instead of failing later in the build.
 targets:

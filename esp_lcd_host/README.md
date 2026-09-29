@@ -8,7 +8,7 @@
 - the GUI code stays untouched, because the panel implements the generic `esp_lcd_panel_t` interface used by every LCD driver,
 - the rendered frame can be saved as a PNG file and compared against a golden image in CI.
 
-The component builds for the ESP-IDF host target, which the manifest declares as `linux`. `linux` is the name ESP-IDF gives that target on **every** operating system - it does not mean that the component needs the Linux kernel. The same component builds and runs natively on **Linux, macOS and Windows**; declaring the target only makes the component manager reject the dependency for a real chip instead of failing later in the build.
+The component builds for the ESP-IDF host target, which the manifest declares as `linux`. `linux` is the name ESP-IDF gives that target on the hosts that support it - **Linux and macOS** (the POSIX simulator does not run on native Windows). It does not mean that the component needs the Linux kernel; declaring the target only makes the component manager reject the dependency for a real chip instead of failing later in the build.
 
 ## SDL
 
@@ -53,7 +53,6 @@ The drivers are loaded with `dlopen()` at run time, so the executable is not lin
 | --- | --- | --- |
 | Linux | Wayland, X11, KMSDRM | see the table below (Debian/Ubuntu names) |
 | macOS | Cocoa | none, the frameworks come with the system |
-| Windows | Win32 | none, the libraries come with the system |
 
 On Linux the desktop packages that are needed for a preview window are:
 
@@ -65,7 +64,7 @@ On Linux the desktop packages that are needed for a preview window are:
 
 They are build time dependencies only: SDL loads the drivers with `dlopen()` at run time.
 
-The Linux desktop drivers are verified. The macOS and Windows branches of the port only select the window driver of the platform through the SDL project; no runner in this repository builds them, so treat them as unverified until one does.
+The Linux desktop drivers are verified. The macOS branch only selects the window driver of the platform through the SDL project; no runner in this repository builds it, so treat it as unverified until one does.
 
 ### The generated configuration
 
@@ -93,7 +92,7 @@ dependencies:
 
 Then run `idf.py reconfigure` or build the project.
 
-> The component requires the ESP-IDF host (`linux`) target and ESP-IDF `>= 6.0.0`. The host target exists on Linux, macOS and Windows.
+> The component requires the ESP-IDF host (`linux`) target and ESP-IDF `>= 6.0.0`. The host target exists on Linux and macOS.
 
 ## Quick start
 
@@ -173,8 +172,8 @@ The application and the test both run on the host, so the test reads the PNG fil
 
 ## Notes and limitations
 
-- The component only supports the ESP-IDF host (`linux`) target, on Linux, macOS and Windows. There is no driver for a real display controller, use an `esp_lcd_*` panel driver for that.
+- The component only supports the ESP-IDF host (`linux`) target, on Linux and macOS. There is no driver for a real display controller, use an `esp_lcd_*` panel driver for that.
 - The panel stores the pixels submitted by the GUI, so rotation, gap, mirroring and color inversion are not applied to the exported image. The same is true for the preview window.
 - A frame may consist of several partial flushes. Export or publish the panel content only after the refresh you want is finished (for example after a synchronous `lv_refr_now()`).
-- A preview window needs a display: SDL opens it through the native driver of the platform (X11, Wayland or Cocoa on a desktop, KMSDRM on a Linux console with access to the DRM device, Win32 on Windows). Everywhere else, including a build without the X11 and Wayland development packages, SDL falls back to the dummy and offscreen drivers, and the panel keeps working as a framebuffer that can be exported as a PNG file.
+- A preview window needs a display: SDL opens it through the native driver of the platform (X11, Wayland or Cocoa on a desktop, KMSDRM on a Linux console with access to the DRM device). Everywhere else, including a build without the X11 and Wayland development packages, SDL falls back to the dummy and offscreen drivers, and the panel keeps working as a framebuffer that can be exported as a PNG file.
 - Preview scaling is handled by SDL. The exported PNG always uses the panel resolution.

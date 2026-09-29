@@ -13,20 +13,14 @@ idf_component_register(SRCS "src/esp_lcd_host.c"
 
 set(SDL_DIR "${CMAKE_CURRENT_LIST_DIR}/SDL")
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(ESP_LCD_HOST_OS "LINUX")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(ESP_LCD_HOST_OS "MACOS")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_SYSTEM_NAME STREQUAL "MSYS" OR CMAKE_SYSTEM_NAME STREQUAL "CYGWIN")
-    set(ESP_LCD_HOST_OS "WINDOWS")
-else()
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     message(FATAL_ERROR
-        "esp_lcd_host does not know the host platform '${CMAKE_SYSTEM_NAME}'. "
-        "The component supports Linux, macOS and Windows; the SDL configuration "
-        "only has to be told how to build for a new platform.")
+        "esp_lcd_host builds for the ESP-IDF linux (POSIX) target, which runs on "
+        "Linux and macOS. This machine reports the host system "
+        "'${CMAKE_SYSTEM_NAME}', which the target does not support.")
 endif()
 
-message(STATUS "esp_lcd_host: building SDL for the ${ESP_LCD_HOST_OS} host")
+message(STATUS "esp_lcd_host: building SDL for the ${CMAKE_SYSTEM_NAME} host")
 
 # Only build a static SDL3, and none of the SDL samples, tests or install
 # rules. The values are put in the cache so the options of SDL keep them.
@@ -57,7 +51,7 @@ set(SDL_GPU      OFF CACHE BOOL "" FORCE)
 # independent, and the alternatives SDL falls back to (the iconv() of the C
 # library, the generic storage and file system back ends) are the ones this
 # component expects. The iconv of the C library stays enabled on purpose: SDL
-# defaults it to off on macOS and Windows.
+# defaults it to off on macOS.
 set(SDL_SYSTEM_ICONV ON  CACHE BOOL "" FORCE)
 set(SDL_LIBICONV     OFF CACHE BOOL "" FORCE)
 set(SDL_FRIBIDI      OFF CACHE BOOL "" FORCE)
@@ -107,7 +101,7 @@ set(SDL_KMSDRM  ${ESP_LCD_HOST_SDL_KMSDRM}  CACHE BOOL "" FORCE)
 # the console build when both desktop drivers are turned off (the CI does, so
 # that the Linux build only depends on the toolchain): the driver list of such
 # a build is then "dummy kmsdrm offscreen".
-if(ESP_LCD_HOST_OS STREQUAL "LINUX" AND NOT ESP_LCD_HOST_SDL_X11 AND NOT ESP_LCD_HOST_SDL_WAYLAND)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ESP_LCD_HOST_SDL_X11 AND NOT ESP_LCD_HOST_SDL_WAYLAND)
     set(SDL_UNIX_CONSOLE_BUILD ON CACHE BOOL "" FORCE)
 endif()
 
