@@ -28,17 +28,15 @@ set(SDL_EXAMPLES OFF)
 set(SDL_INSTALL OFF)
 set(SDL_DISABLE_INSTALL ON)
 
-# Subsystems the panel does not use.
-set(SDL_AUDIO OFF)
-set(SDL_CAMERA OFF)
-set(SDL_JOYSTICK OFF)
-set(SDL_HAPTIC OFF)
-set(SDL_HIDAPI OFF)
-set(SDL_POWER OFF)
-set(SDL_SENSOR OFF)
-set(SDL_DIALOG OFF)
-set(SDL_TRAY OFF)
-set(SDL_GPU OFF)
+# Subsystems the panel does not use: Video opens the window, Render presents
+# the frame buffer, everything else is dead weight. The list also drives the
+# audit below the add_subdirectory(), so an SDL upgrade that declares a new
+# subsystem reports a warning instead of silently growing the build.
+set(_lcd_host_disabled_subsystems AUDIO CAMERA JOYSTICK HAPTIC HIDAPI POWER
+                                  SENSOR DIALOG TRAY GPU)
+foreach(_lcd_host_sub IN LISTS _lcd_host_disabled_subsystems)
+    set(SDL_${_lcd_host_sub} OFF)
+endforeach()
 
 # Optional third party libraries SDL would otherwise pick up
 set(SDL_SYSTEM_ICONV ON)
@@ -110,12 +108,59 @@ unset(_lcd_host_dir_props)
 unset(_lcd_host_val)
 set_property(DIRECTORY PROPERTY LINK_LIBRARIES "")
 
-add_subdirectory("${SDL_DIR}" "SDL")
+# The build system chooses the C standard through compile options today, but if
+# it ever moves to the CMAKE_C_STANDARD variable, that variable would reach SDL
+# here as well. Remove it from this scope so SDL keeps choosing its standard
+# through its own compile features; the standard of the component was already
+# fixed on its targets when they were created.
+unset(CMAKE_C_STANDARD)
+unset(CMAKE_C_EXTENSIONS)
+
+# The subsystem audit: read the subsystem declarations of the SDL project and
+# warn about anything this configuration neither disables nor uses. SDL keeps
+# the declared names in the SDL_SUBSYSTEMS variable of its subdirectory scope,
+# which is not visible once add_subdirectory() returns, so the names are read
+# from the file. If SDL ever renames the declaration, the audit reports that it
+# found nothing and goes quiet instead of failing the build.
+file(STRINGS "${SDL_DIR}/CMakeLists.txt" _lcd_host_sdl_subsystems
+     REGEX "define_sdl_subsystem\\(([A-Za-z]+)")
+list(TRANSFORM _lcd_host_sdl_subsystems REPLACE
+     ".*define_sdl_subsystem\\(([A-Za-z]+).*" "\\1")
+string(TOUPPER "${_lcd_host_sdl_subsystems}" _lcd_host_sdl_subsystems)
+list(REMOVE_DUPLICATES _lcd_host_sdl_subsystems)
+if(_lcd_host_sdl_subsystems)
+    foreach(_lcd_host_sub IN LISTS _lcd_host_sdl_subsystems)
+        if(NOT "${_lcd_host_sub}" IN_LIST _lcd_host_disabled_subsystems AND
+           NOT "${_lcd_host_sub}" MATCHES "^(VIDEO|RENDER)$")
+            message(WARNING
+                "SDL declares the ${_lcd_host_sub} subsystem, which the esp_lcd_host "
+                "configuration neither disables nor uses. Add ${_lcd_host_sub} to "
+                "_lcd_host_disabled_subsystems in the component CMakeLists unless the "
+                "panel should build with it.")
+        endif()
+    endforeach()
+else()
+    message(STATUS "esp_lcd_host: could not find the subsystem declarations of SDL, skipping the subsystem audit")
+endif()
+unset(_lcd_host_sdl_subsystems)
+unset(_lcd_host_sub)
+
+add_subdirectory("${SDL_DIR}" "SDL" EXCLUDE_FROM_ALL)
 
 # The component has to supply a few definitions SDL wants from the parts of
 # itself it does not build (see src/sdl_port_stubs.c). They are added to the
 # SDL library, because the stub includes the private SDL_internal.h header,
-# which is only on the include path of SDL3::SDL3.
+# which is only on the include path of SDL3::SDL3. The guard turns a rename of
+# the SDL target into an actionable message instead of a CMake error.
+if(TARGET SDL3-static)
+    target_sources(SDL3-static PRIVATE "${CMAKE_CURRENT_LIST_DIR}/src/sdl_port_stubs.c")
+else()
+    message(FATAL_ERROR
+        "SDL did not define the SDL3-static target; the stub of esp_lcd_host "
+        "has to be attached to the static library of SDL. Check how SDL names "
+        "its targets and update the target_sources() call in the component CMakeLists.")
+endif()
+
 target_sources(SDL3-static PRIVATE "${CMAKE_CURRENT_LIST_DIR}/src/sdl_port_stubs.c")
 
 target_link_libraries(${COMPONENT_LIB} PRIVATE SDL3::SDL3)
