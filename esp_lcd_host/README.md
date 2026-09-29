@@ -29,21 +29,19 @@ Everything the port keeps is a superset of what a desktop build of SDL would pro
 
 The point of the component is to use the panel as a screen simulator, so a preview window has to open on the machine that builds it. All three desktop drivers of SDL are enabled by default:
 
-| Driver | Option | Runs on |
-| --- | --- | --- |
-| Wayland | `ESP_LCD_HOST_SDL_WAYLAND` | a Wayland session, using the native Wayland back end |
-| X11 | `ESP_LCD_HOST_SDL_X11` | an X11 session and under XWayland |
-| KMSDRM | `ESP_LCD_HOST_SDL_KMSDRM` | a Linux console with access to the DRM device |
+| Driver | Runs on |
+| --- | --- |
+| Wayland | a Wayland session, using the native Wayland back end |
+| X11 | an X11 session and under XWayland |
+| KMSDRM | a Linux console with access to the DRM device |
 
-Each one is compiled in only when the machine has its development packages, and SDL picks the right one at run time, so the same binary works in every session. Turning a driver off is what a build wants when it must not depend on the build machine at all:
+SDL compiles in a driver when the build machine has its development packages and picks the right one at run time, so the same binary works in every session. A build that must not probe the desktop packages at all turns the drivers off through the options of SDL itself, which pass straight through the component:
 
 ```bash
-idf.py -DESP_LCD_HOST_SDL_X11=OFF -DESP_LCD_HOST_SDL_WAYLAND=OFF build
+idf.py -DSDL_X11=OFF -DSDL_WAYLAND=OFF build
 ```
 
-A build without any of the three still produces a working panel: SDL keeps the dummy and offscreen drivers, and the panel works as a frame buffer that can be exported as a PNG file.
-
-SDL stops the configuration when the X11 driver is on and the X11 development packages are incomplete, and names the missing package and the option to turn off. Note that XInput2 and XFixes have to be turned off together, because SDL links XInput2 against XFixes.
+A build without any of the three still produces a working panel: SDL keeps the dummy and offscreen drivers, and the panel works as a frame buffer that can be exported as a PNG file. The component allows the SDL console build on Linux, so a machine without the desktop packages configures with those drivers instead of failing.
 
 The drivers are loaded with `dlopen()` at run time, so the executable is not linked against them and a machine without a display server still runs the same binary.
 

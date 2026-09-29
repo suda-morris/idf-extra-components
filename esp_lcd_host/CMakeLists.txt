@@ -66,29 +66,8 @@ set(SDL_RENDER_VULKAN OFF)
 # an ESP-IDF application, which does not read those sections.
 set(SDL_DLOPEN_NOTES OFF)
 
-# The desktop video drivers: on by default, so the preview window opens on the
-# machine the application runs on, and each one can be turned off for a build
-# that must not probe the desktop packages at all. SDL decides from what the
-# machine actually has, loads the desktop libraries with dlopen() at run time
-# and keeps the dummy and offscreen drivers for a machine without a display,
-# which is what lets the CI build without the desktop libraries.
-option(ESP_LCD_HOST_SDL_X11     "Build the SDL X11 video driver when X11 is available" ON)
-option(ESP_LCD_HOST_SDL_WAYLAND "Build the SDL Wayland video driver when Wayland is available" ON)
-option(ESP_LCD_HOST_SDL_KMSDRM  "Build the SDL KMSDRM video driver when libdrm, gbm and EGL are available" ON)
-set(SDL_X11     ${ESP_LCD_HOST_SDL_X11})
-set(SDL_WAYLAND ${ESP_LCD_HOST_SDL_WAYLAND})
-set(SDL_KMSDRM  ${ESP_LCD_HOST_SDL_KMSDRM})
-
-# SDL refuses to configure a Unix build that can neither create an X11 nor a
-# Wayland window, because such a build cannot open a window on a normal desktop.
-# The panel is not a normal desktop application: it draws into a frame buffer
-# and only opens a preview window when the machine has a display server. Allow
-# the console build when both desktop drivers are turned off (the CI does, so
-# that the Linux build only depends on the toolchain): the driver list of such
-# a build is then "dummy kmsdrm offscreen".
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ESP_LCD_HOST_SDL_X11 AND NOT ESP_LCD_HOST_SDL_WAYLAND)
-    set(SDL_UNIX_CONSOLE_BUILD ON)
-endif()
+# The console build is allowed on Linux so that a machine without the desktop packages can still build
+set(SDL_UNIX_CONSOLE_BUILD ON)
 
 # SDL and the ESP-IDF build system both vendor the same include-guarded
 # GetGitRevisionDescription module. The build system includes its copy first,
