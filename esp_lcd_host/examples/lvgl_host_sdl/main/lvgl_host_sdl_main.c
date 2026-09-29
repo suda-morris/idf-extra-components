@@ -136,10 +136,6 @@ void app_main(void)
      * esp_lcd_new_panel_host_sdl() only for the host build. Reset is an
      * optional panel operation: the host panel has no hardware to reset and
      * reports ESP_ERR_NOT_SUPPORTED, which is fine to continue after. */
-    err = esp_lcd_panel_reset(panel);
-    if (err != ESP_OK && err != ESP_ERR_NOT_SUPPORTED) {
-        ESP_ERROR_CHECK(err);
-    }
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
 
     ESP_LOGI(TAG, "Initialize LVGL library");
