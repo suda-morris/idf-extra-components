@@ -12,9 +12,9 @@ The component builds for the ESP-IDF host target, which the manifest declares as
 
 ## SDL
 
-The component vendors SDL3 as the git submodule [`esp_lcd_host/SDL`](SDL) and builds it with the CMake project SDL ships, through `add_subdirectory()` in `port/sdl/CMakeLists.txt`. It is not taken from the component registry, and reusing the SDL project keeps the source lists and the build configuration header in sync with the submodule instead of copying them here.
+The component vendors SDL3 as the git submodule [`esp_lcd_host/SDL`](SDL) and builds it with the CMake project SDL ships, through `add_subdirectory()` in the [component CMakeLists.txt](CMakeLists.txt). It is not taken from the component registry, and reusing the SDL project keeps the source lists and the build configuration header in sync with the submodule instead of copying them here.
 
-The port reads the host platform from `CMAKE_SYSTEM_NAME` and then hands the platform specific work to the SDL project. SDL selects the window driver, the thread back end, the file system back end and the platform sources on its own, and it probes the machine for everything that describes the platform: the C library, pthreads, inotify, the compiler, the X11 extensions, Wayland, KMSDRM and EGL. `port/sdl/CMakeLists.txt` does not repeat any of that, so updating the submodule is the only thing that can change it.
+The SDL configuration of the component reads the host platform from `CMAKE_SYSTEM_NAME` and then hands the platform specific work to the SDL project. SDL selects the window driver, the thread back end, the file system back end and the platform sources on its own, and it probes the machine for everything that describes the platform: the C library, pthreads, inotify, the compiler, the X11 extensions, Wayland, KMSDRM and EGL. The component CMakeLists.txt does not repeat any of that, so updating the submodule is the only thing that can change it.
 
 What the port does do, before the subdirectory is added:
 
@@ -69,7 +69,7 @@ The Linux desktop drivers are verified. The macOS and Windows branches of the po
 
 ### The generated configuration
 
-SDL generates `SDL_build_config.h` during the build, so the port does not carry a hand written configuration. The port also does not carry a source list: `port/sdl/CMakeLists.txt` and `port/src/sdl_port_stubs.c` are the only files to review when the submodule is updated.
+SDL generates `SDL_build_config.h` during the build, so the port does not carry a hand written configuration. The port also does not carry a source list: the SDL configuration in the [component CMakeLists.txt](CMakeLists.txt) and [`src/sdl_port_stubs.c`](src/sdl_port_stubs.c) are the only files to review when the submodule is updated.
 
 Because SDL is built from the submodule, the component has no dependency other than ESP-IDF and `espressif/libpng`:
 
