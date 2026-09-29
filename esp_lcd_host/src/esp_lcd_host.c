@@ -176,7 +176,8 @@ static esp_err_t host_panel_init(esp_lcd_panel_t *panel)
     /* Power-on state of the simulated panel: every pixel off (a zeroed
      * framebuffer is black in all supported color formats). */
     memset(drv->framebuffer, 0, drv->framebuffer_size);
-    return ESP_OK;
+    /* Show the power-on frame even before the GUI draws anything. */
+    return esp_lcd_host_sdl_backend_update(drv->sdl_ctx, drv->framebuffer, drv->framebuffer_size);
 }
 
 /* Copy a source crop into the panel framebuffer. The source crop and target
@@ -238,9 +239,10 @@ static esp_err_t host_panel_draw_bitmap(esp_lcd_panel_t *panel, int x_start, int
     ESP_RETURN_ON_ERROR(host_panel_copy_bitmap(drv, x_start, y_start, x_end, y_end, color_data,
                                                src_x_size, src_y_size, 0, 0, (int)src_x_size, (int)src_y_size),
                         TAG, "invalid bitmap region");
-    /* The preview window shares the framebuffer, mark it dirty so the next
-     * esp_lcd_host_pump_events() repaints it. */
-    return esp_lcd_host_sdl_backend_update(drv->sdl_ctx, drv->framebuffer, drv->framebuffer_size);
+    /* The preview window shares the framebuffer, mark only the drawn region
+     * dirty so the next esp_lcd_host_pump_events() repaints what changed. */
+    return esp_lcd_host_sdl_backend_update_rect(drv->sdl_ctx, drv->framebuffer, drv->framebuffer_size,
+                                                x_start, y_start, (int)src_x_size, (int)src_y_size);
 }
 
 static esp_err_t host_panel_draw_bitmap_2d(esp_lcd_panel_t *panel, int x_start, int y_start, int x_end, int y_end,
@@ -252,7 +254,8 @@ static esp_err_t host_panel_draw_bitmap_2d(esp_lcd_panel_t *panel, int x_start, 
                                                src_x_size, src_y_size, src_x_start, src_y_start,
                                                src_x_end, src_y_end),
                         TAG, "invalid bitmap region");
-    return esp_lcd_host_sdl_backend_update(drv->sdl_ctx, drv->framebuffer, drv->framebuffer_size);
+    return esp_lcd_host_sdl_backend_update_rect(drv->sdl_ctx, drv->framebuffer, drv->framebuffer_size,
+                                                x_start, y_start, x_end - x_start, y_end - y_start);
 }
 
 esp_err_t esp_lcd_host_panel_get_info(esp_lcd_panel_handle_t panel, esp_lcd_host_panel_info_t *info)

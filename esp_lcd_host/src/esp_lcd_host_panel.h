@@ -39,9 +39,27 @@ esp_err_t esp_lcd_host_sdl_backend_create(const esp_lcd_host_config_t *config, u
 void esp_lcd_host_sdl_backend_delete(void *ctx);
 
 /**
- * @brief Push the latest panel content to the preview surface
+ * @brief Push the latest panel content to the preview
+ *
+ * Marks the whole panel dirty: the next esp_lcd_host_pump_events() uploads the
+ * complete framebuffer into the preview texture and presents it.
  */
 esp_err_t esp_lcd_host_sdl_backend_update(void *ctx, const uint8_t *framebuffer, size_t framebuffer_size);
+
+/**
+ * @brief Push a panel region to the preview
+ *
+ * Marks the region dirty and unions it with the regions of the not yet
+ * presented flushes, so a GUI that flushes in partial areas uploads only what
+ * changed on the next pump call.
+ *
+ * @param[in] x      Left edge of the region in panel pixels
+ * @param[in] y      Top edge of the region in panel pixels
+ * @param[in] width  Width of the region in pixels
+ * @param[in] height Height of the region in pixels
+ */
+esp_err_t esp_lcd_host_sdl_backend_update_rect(void *ctx, const uint8_t *framebuffer, size_t framebuffer_size,
+                                               int x, int y, int width, int height);
 
 /**
  * @brief Pump the SDL event queue, called from esp_lcd_host_pump_events()

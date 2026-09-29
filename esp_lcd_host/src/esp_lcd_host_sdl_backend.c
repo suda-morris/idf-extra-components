@@ -49,6 +49,9 @@ typedef struct host_sdl_ctx {
     int height;
     size_t bytes_per_pixel;
     bool dirty;
+    /* Union of the panel regions drawn since the last present: the pump
+     * uploads only this part of the framebuffer into the texture. */
+    SDL_Rect dirty_rect;
     struct host_sdl_ctx *next;
 } host_sdl_ctx_t;
 
@@ -144,6 +147,10 @@ esp_err_t esp_lcd_host_sdl_backend_create(const esp_lcd_host_config_t *config, u
         free(ctx);
         return ESP_FAIL;
     }
+    /* Deliberately no renderer vsync: SDL waits for the frame callback of the
+     * compositor, and an occluded preview window never gets one, which would
+     * stall esp_lcd_host_pump_events() forever. The application paces the
+     * pump loop, so the unsynced present costs nothing here. */
     /* The whole panel is the logical scene: SDL scales it to the window, and
      * SDL_RenderPresent() of a dirty frame is all the preview needs. */
     if (!SDL_SetRenderLogicalPresentation(ctx->renderer, config->width, config->height,
@@ -222,6 +229,38 @@ void esp_lcd_host_sdl_backend_delete(void *backend)
     free(ctx);
 }
 
+/* Clip the region to the panel and union it into the pending dirty rect of
+ * the backend. */
+static void host_sdl_mark_dirty_rect(host_sdl_ctx_t *ctx, int x, int y, int width, int height)
+{
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    int right = x + width;
+    int bottom = y + height;
+    x = SDL_max(x, 0);
+    y = SDL_max(y, 0);
+    right = SDL_min(right, ctx->width);
+    bottom = SDL_min(bottom, ctx->height);
+    if (x >= right || y >= bottom) {
+        return;
+    }
+    if (ctx->dirty_rect.w == 0 || ctx->dirty_rect.h == 0) {
+        ctx->dirty_rect.x = x;
+        ctx->dirty_rect.y = y;
+        ctx->dirty_rect.w = right - x;
+        ctx->dirty_rect.h = bottom - y;
+    } else {
+        int union_right = SDL_max(ctx->dirty_rect.x + ctx->dirty_rect.w, right);
+        int union_bottom = SDL_max(ctx->dirty_rect.y + ctx->dirty_rect.h, bottom);
+        ctx->dirty_rect.x = SDL_min(ctx->dirty_rect.x, x);
+        ctx->dirty_rect.y = SDL_min(ctx->dirty_rect.y, y);
+        ctx->dirty_rect.w = union_right - ctx->dirty_rect.x;
+        ctx->dirty_rect.h = union_bottom - ctx->dirty_rect.y;
+    }
+    ctx->dirty = true;
+}
+
 esp_err_t esp_lcd_host_sdl_backend_update(void *backend, const uint8_t *framebuffer, size_t framebuffer_size)
 {
     host_sdl_ctx_t *ctx = backend;
@@ -230,7 +269,20 @@ esp_err_t esp_lcd_host_sdl_backend_update(void *backend, const uint8_t *framebuf
     }
     ESP_RETURN_ON_FALSE(framebuffer == ctx->framebuffer && framebuffer_size == ctx->framebuffer_size,
                         ESP_ERR_INVALID_ARG, TAG, "framebuffer mismatch");
-    ctx->dirty = true;
+    host_sdl_mark_dirty_rect(ctx, 0, 0, ctx->width, ctx->height);
+    return ESP_OK;
+}
+
+esp_err_t esp_lcd_host_sdl_backend_update_rect(void *backend, const uint8_t *framebuffer, size_t framebuffer_size,
+                                               int x, int y, int width, int height)
+{
+    host_sdl_ctx_t *ctx = backend;
+    if (!ctx) {
+        return ESP_OK;
+    }
+    ESP_RETURN_ON_FALSE(framebuffer == ctx->framebuffer && framebuffer_size == ctx->framebuffer_size,
+                        ESP_ERR_INVALID_ARG, TAG, "framebuffer mismatch");
+    host_sdl_mark_dirty_rect(ctx, x, y, width, height);
     return ESP_OK;
 }
 
@@ -277,10 +329,22 @@ esp_err_t esp_lcd_host_sdl_backend_pump(void *backend)
             continue;
         }
         ctx->dirty = false;
-        if (!SDL_UpdateTexture(ctx->texture, NULL, ctx->framebuffer,
-                               (int)(ctx->width * ctx->bytes_per_pixel))) {
-            ESP_LOGE(TAG, "failed to upload the frame: %s", SDL_GetError());
-            continue;
+        if (ctx->dirty_rect.w > 0 && ctx->dirty_rect.h > 0) {
+            /* Upload only the union of the drawn regions: the pitch still
+             * describes the whole framebuffer row, the pixel pointer just
+             * starts at the first row and column of the dirty rect. */
+            const uint8_t *src = ctx->framebuffer
+                                 + (size_t)ctx->dirty_rect.y * (size_t)ctx->width * ctx->bytes_per_pixel
+                                 + (size_t)ctx->dirty_rect.x * ctx->bytes_per_pixel;
+            if (!SDL_UpdateTexture(ctx->texture, &ctx->dirty_rect, src,
+                                   (int)((size_t)ctx->width * ctx->bytes_per_pixel))) {
+                ESP_LOGE(TAG, "failed to upload the frame: %s", SDL_GetError());
+                ctx->dirty_rect.w = 0;
+                ctx->dirty_rect.h = 0;
+                continue;
+            }
+            ctx->dirty_rect.w = 0;
+            ctx->dirty_rect.h = 0;
         }
         if (!SDL_RenderClear(ctx->renderer) ||
             !SDL_RenderTexture(ctx->renderer, ctx->texture, NULL, NULL) ||
