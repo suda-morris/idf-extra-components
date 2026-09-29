@@ -7,7 +7,8 @@
 
 #include "sdkconfig.h"
 #include "esp_lcd_host.h"
-#include "esp_lcd_host_types.h"
+#include "esp_lcd_types.h"
+#include "esp_lcd_panel_interface.h"
 
 /**
  * Backends driving an esp_lcd_host panel.

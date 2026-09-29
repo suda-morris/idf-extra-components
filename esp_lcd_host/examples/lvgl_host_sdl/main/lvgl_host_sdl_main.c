@@ -23,6 +23,7 @@
 #include "freertos/task.h"
 #include "lvgl.h"
 
+#include "esp_lcd_panel_ops.h"
 #include "esp_lcd_host.h"
 
 #define EXAMPLE_LCD_H_RES       240

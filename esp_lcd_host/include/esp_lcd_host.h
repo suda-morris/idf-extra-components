@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "esp_err.h"
-#include "esp_lcd_host_types.h"
+#include "esp_lcd_types.h"
 
 #ifdef __cplusplus
 extern "C" {
