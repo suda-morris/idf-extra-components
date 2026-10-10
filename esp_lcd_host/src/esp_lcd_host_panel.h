@@ -38,6 +38,31 @@ esp_err_t esp_lcd_host_sdl_backend_create(const esp_lcd_host_config_t *config, u
                                           size_t framebuffer_size, void **ret_ctx);
 
 /**
+ * @brief Called when the user asks for a screenshot from a preview window
+ *
+ * The backend only sees SDL events, while the panel owns the framebuffer and
+ * the encoder, so the panel installs this and the backend calls it.
+ *
+ * @param[in] user_ctx  Context given to esp_lcd_host_sdl_backend_set_screenshot_fn()
+ */
+typedef void (*esp_lcd_host_screenshot_fn_t)(void *user_ctx);
+
+/**
+ * @brief Set the function the backend calls when the screenshot key is pressed
+ *
+ * Called by esp_lcd_new_panel_host_sdl() with a function that writes the PNG.
+ * An application that wants to handle the key itself leaves `fn` NULL and
+ * calls esp_lcd_host_screenshot_save_png() whenever it likes.
+ *
+ * @param[in] backend     Backend context, NULL is accepted and ignored
+ * @param[in] fn          Function to call, NULL disables the key
+ * @param[in] user_ctx    Passed to `fn` on every press
+ */
+esp_err_t esp_lcd_host_sdl_backend_set_screenshot_fn(void *backend,
+                                                     esp_lcd_host_screenshot_fn_t fn,
+                                                     void *user_ctx);
+
+/**
  * @brief Release one SDL backend, called from esp_lcd_panel_del()
  */
 void esp_lcd_host_sdl_backend_delete(void *ctx);

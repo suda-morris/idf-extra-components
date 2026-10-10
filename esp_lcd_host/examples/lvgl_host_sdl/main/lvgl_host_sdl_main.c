@@ -117,6 +117,9 @@ void app_main(void)
         .create_window = true,
         .scale = 2,
         .window_title = "LVGL Example Simulator",
+        /* Press S in the preview window to write a PNG without stopping. */
+        .screenshot_key = 's',
+        .screenshot_path = EXAMPLE_PNG_PATH,
     };
     esp_lcd_panel_handle_t panel = NULL;
     esp_err_t err = esp_lcd_new_panel_host_sdl(&panel_config, &panel);

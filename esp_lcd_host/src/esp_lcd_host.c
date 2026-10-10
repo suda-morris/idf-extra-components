@@ -22,6 +22,8 @@
 
 static const char *TAG = "lcd_host";
 
+#define HOST_DEFAULT_SCREENSHOT_PATH "screenshot.png"
+
 /*
  * esp_lcd_panel_t must be the first member so the object can be exposed as a
  * normal esp_lcd panel handle. Use __containerof() when recovering this private
@@ -36,6 +38,8 @@ typedef struct {
     uint8_t *framebuffer;
     size_t framebuffer_size;
     void *sdl_ctx;
+    /* Where the preview window saves a screenshot on the configured key. */
+    const char *screenshot_path;
 } host_panel_t;
 
 static esp_err_t host_panel_del(esp_lcd_panel_t *panel);
@@ -45,6 +49,7 @@ static esp_err_t host_panel_draw_bitmap(esp_lcd_panel_t *panel, int x_start, int
 static esp_err_t host_panel_draw_bitmap_2d(esp_lcd_panel_t *panel, int x_start, int y_start, int x_end, int y_end,
                                            const void *src_data, size_t src_x_size, size_t src_y_size,
                                            int src_x_start, int src_y_start, int src_x_end, int src_y_end);
+static void host_panel_screenshot(void *user_ctx);
 
 /* Recover the private panel object from a public handle. The destructor
  * identifies handles owned by this driver before __containerof() is applied. */
@@ -53,6 +58,21 @@ static esp_err_t host_panel_check(esp_lcd_panel_handle_t panel, host_panel_t **r
     ESP_RETURN_ON_FALSE(panel && panel->del == host_panel_del, ESP_ERR_INVALID_ARG, TAG, "invalid panel handle");
     *ret_drv = __containerof(panel, host_panel_t, base);
     return ESP_OK;
+}
+
+/* Write the current panel content to the configured file. Called by the
+ * backend from the pump loop when the user presses the screenshot key. The
+ * frame that is on screen is the frame that gets written, because the preview
+ * window shows the panel framebuffer itself. */
+static void host_panel_screenshot(void *user_ctx)
+{
+    host_panel_t *drv = __containerof(user_ctx, host_panel_t, base);
+    esp_err_t err = esp_lcd_host_screenshot_save_png(&drv->base, drv->screenshot_path);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "screenshot key: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "screenshot key: wrote '%s'", drv->screenshot_path);
+    }
 }
 
 esp_err_t esp_lcd_new_panel_host_sdl(const esp_lcd_host_config_t *config, esp_lcd_panel_handle_t *ret_panel)
@@ -83,11 +103,21 @@ esp_err_t esp_lcd_new_panel_host_sdl(const esp_lcd_host_config_t *config, esp_lc
     host_panel->framebuffer = calloc(1, host_panel->framebuffer_size);
     ESP_GOTO_ON_FALSE(host_panel->framebuffer, ESP_ERR_NO_MEM, err, TAG, "no mem for framebuffer");
 
+    host_panel->screenshot_path = config->screenshot_path ? config->screenshot_path
+                                                          : HOST_DEFAULT_SCREENSHOT_PATH;
+
     /* The preview window paints the panel framebuffer directly, so submitting a
      * frame copies nothing. */
     ESP_GOTO_ON_ERROR(esp_lcd_host_sdl_backend_create(config, host_panel->framebuffer,
                                                       host_panel->framebuffer_size, &host_panel->sdl_ctx),
                       err, TAG, "failed to create SDL backend");
+
+    /* The backend only sees the key press, the panel owns the framebuffer and
+     * the encoder, so it calls back into here. A panel without a preview window
+     * has no backend and ignores the key anyway. */
+    ESP_GOTO_ON_ERROR(esp_lcd_host_sdl_backend_set_screenshot_fn(host_panel->sdl_ctx,
+                                                                 host_panel_screenshot, host_panel),
+                      err, TAG, "failed to install the screenshot key");
 
     host_panel->base.del = host_panel_del;
     /* init() is mandatory in the esp_lcd panel interface (the generic wrapper

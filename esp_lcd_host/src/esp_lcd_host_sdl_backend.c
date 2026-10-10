@@ -52,6 +52,11 @@ typedef struct host_sdl_ctx {
     /* Union of the panel regions drawn since the last present: the pump
      * uploads only this part of the framebuffer into the texture. */
     SDL_Rect dirty_rect;
+    /* The screenshot key and what to do when it is pressed, both from the
+     * panel configuration. */
+    int screenshot_key;
+    esp_lcd_host_screenshot_fn_t screenshot_fn;
+    void *screenshot_ctx;
     struct host_sdl_ctx *next;
 } host_sdl_ctx_t;
 
@@ -119,6 +124,8 @@ esp_err_t esp_lcd_host_sdl_backend_create(const esp_lcd_host_config_t *config, u
     ctx->bytes_per_pixel = bytes_per_pixel;
     ctx->width = config->width;
     ctx->height = config->height;
+    /* The panel installs the function to call once the backend exists. */
+    ctx->screenshot_key = config->screenshot_key;
 
     /* Keep windows resizable so the preview can be zoomed by the user as well.
      * The initial size is the panel size times the requested scale. */
@@ -190,6 +197,21 @@ esp_err_t esp_lcd_host_sdl_backend_create(const esp_lcd_host_config_t *config, u
              config->window_title ? config->window_title : HOST_DEFAULT_WINDOW_TITLE,
              config->width * scale, config->height * scale, scale);
     *ret_ctx = ctx;
+    return ESP_OK;
+}
+
+esp_err_t esp_lcd_host_sdl_backend_set_screenshot_fn(void *backend,
+                                                     esp_lcd_host_screenshot_fn_t fn,
+                                                     void *user_ctx)
+{
+    host_sdl_ctx_t *ctx = backend;
+    if (!ctx) {
+        return ESP_OK;
+    }
+    pthread_mutex_lock(&s_backends_lock);
+    ctx->screenshot_fn = fn;
+    ctx->screenshot_ctx = user_ctx;
+    pthread_mutex_unlock(&s_backends_lock);
     return ESP_OK;
 }
 
@@ -299,6 +321,37 @@ esp_err_t esp_lcd_host_sdl_backend_update_rect(void *backend, const uint8_t *fra
     return ESP_OK;
 }
 
+/* Compare a pressed key against the configured one. An ASCII letter matches
+     * with or without Shift, so that both "s" and "S" reach the panel; every
+     * other key has to match exactly. */
+static bool host_sdl_key_matches(int configured, SDL_Keycode pressed)
+{
+    if (configured <= 0) {
+        return false;
+    }
+    if (pressed >= 'A' && pressed <= 'Z') {
+        pressed += 'a' - 'A';
+    }
+    return configured == (int)pressed;
+}
+
+/* The screenshot key belongs to the window it was pressed in, so that several
+ * panels with different keys do not react to each other. Returns the backend
+ * that has to save, or NULL. */
+static host_sdl_ctx_t *host_sdl_find_screenshot_owner(SDL_Window *window, SDL_Keycode key)
+{
+    host_sdl_ctx_t *owner = NULL;
+    pthread_mutex_lock(&s_backends_lock);
+    for (host_sdl_ctx_t *ctx = s_backends; ctx; ctx = ctx->next) {
+        if (ctx->window == window && ctx->screenshot_fn && host_sdl_key_matches(ctx->screenshot_key, key)) {
+            owner = ctx;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&s_backends_lock);
+    return owner;
+}
+
 esp_err_t esp_lcd_host_sdl_backend_pump(void *backend)
 {
     /* esp_lcd_host_pump_events() has no panel handle and walks the registry, so
@@ -313,6 +366,12 @@ esp_err_t esp_lcd_host_sdl_backend_pump(void *backend)
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) {
             s_window_close_requested = true;
+        } else if (event.type == SDL_EVENT_KEY_DOWN) {
+            host_sdl_ctx_t *owner = host_sdl_find_screenshot_owner(
+                SDL_GetWindowFromID(event.key.windowID), event.key.key);
+            if (owner) {
+                owner->screenshot_fn(owner->screenshot_ctx);
+            }
         } else if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
             SDL_Window *closed = SDL_GetWindowFromID(event.window.windowID);
             host_sdl_ctx_t *owner = NULL;
@@ -329,8 +388,9 @@ esp_err_t esp_lcd_host_sdl_backend_pump(void *backend)
                 s_window_close_requested = true;
             }
         }
-        /* Anything else (input events and the like) is dropped: the simulator
-         * has no input API yet, and no application sees this queue. */
+        /* Anything else (pointer and mouse input and the like) is dropped:
+         * the simulator has no input API yet, and no application sees this
+         * queue. The screenshot key above is the one input that is acted on. */
     }
 
     /* Present every dirty window. The renderer is created without vsync (see

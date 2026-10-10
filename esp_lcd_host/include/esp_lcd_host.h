@@ -25,9 +25,13 @@ typedef struct {
     int width;                       /*!< Panel width in pixels */
     int height;                      /*!< Panel height in pixels */
     int scale;                       /*!< Integer upscale factor for the preview, 0 or 1 means no scaling */
-    esp_color_fourcc_t color_format; /*!< Framebuffer color format, one of the `esp_color_fourcc_t` values */
+    esp_color_fourcc_t color_format; /*!< Framebuffer color format, one of the `esp_lcd_types.h` fourcc values */
     bool create_window;              /*!< Open a resizable SDL preview window (needs a display, keep false in CI) */
     const char *window_title;        /*!< Preview window title, NULL selects a default */
+    int screenshot_key;              /*!< Save a PNG when this key is pressed in the preview window, 0 disables it.
+                                          An ASCII letter matches with or without Shift, anything else must match
+                                          exactly. An SDL keycode; the ASCII letters have their ASCII value. */
+    const char *screenshot_path;     /*!< File the key writes to, NULL selects "screenshot.png" */
 } esp_lcd_host_config_t;
 
 /**
