@@ -43,6 +43,7 @@ jobs:
             esp_ext_part_tables
             esp_gcov
             esp_isotp
+            esp_lcd_host
             esp_lcd_qemu_rgb
             esp_lcd_screenshot
             esp_linenoise

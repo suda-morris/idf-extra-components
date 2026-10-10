@@ -1,0 +1,6 @@
+## IDF Component Manager Manifest File
+dependencies:
+  lvgl/lvgl: "^9.6.0"
+  espressif/esp_lcd_host:
+    version: "*"
+    override_path: "../../../"

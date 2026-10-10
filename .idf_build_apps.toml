@@ -20,6 +20,7 @@ manifest_file = [
     "esp_gcov/.build-test-rules.yml",
     "esp_jpeg/.build-test-rules.yml",
     "esp_linenoise/.build-test-rules.yml",
+    "esp_lcd_host/.build-test-rules.yml",
     "esp_lcd_screenshot/.build-test-rules.yml",
     "esp_schedule/.build-test-rules.yml",
     "esp_cli/.build-test-rules.yml",
