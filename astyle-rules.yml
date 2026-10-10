@@ -18,6 +18,7 @@ submodules:
   - "/esp_delta_ota/detools/"
   - "/esp_isotp/isotp-c/"
   - "/esp_jpeg/tjpgd/"
+  - "/esp_lcd_host/SDL/"
   - "/esp_sysview/src/SEGGER/"
   - "/esp_sysview/src/Sample/"
   - "/expat/expat/"

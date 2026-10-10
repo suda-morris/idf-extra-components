@@ -1,0 +1,8 @@
+name: SDL
+version: 3.4.18
+cpe: cpe:2.3:a:libsdl:simple_directmedia_layer:{}:*:*:*:*:*:*:*
+supplier: 'Organization: SDL <https://www.libsdl.org/>'
+description: Simple DirectMedia Layer 3, the SDL preview-window backend of esp_lcd_host
+url: https://github.com/libsdl-org/SDL
+hash: 829a65d769d935c4852f8159e964312c0957260a
+license: Zlib
