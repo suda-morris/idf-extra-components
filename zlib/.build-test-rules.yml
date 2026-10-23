@@ -1,0 +1,9 @@
+zlib/examples/zlib_example:
+  enable:
+    - if: IDF_TARGET in ["esp32s3", "esp32c6"]
+      reason: "Sufficient to test on representative Xtensa and RISC-V targets"
+
+zlib/test_apps:
+  enable:
+    - if: IDF_TARGET in ["esp32s3", "esp32c6"]
+      reason: "Sufficient to test on representative Xtensa and RISC-V targets"
