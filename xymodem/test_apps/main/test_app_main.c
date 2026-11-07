@@ -9,16 +9,19 @@
 #include "unity_test_runner.h"
 #include "esp_newlib.h"
 #include "unity_test_utils_memory.h"
-#include "test_xymodem_common.h"
+#include "test_xymodem_loop.h"
 
 void setUp(void)
 {
-    xymodem_test_uart_init();
+    xymodem_loop_uart_init();
+    xymodem_loop_flush();
     unity_utils_record_free_mem();
 }
 
 void tearDown(void)
 {
+    xymodem_loop_close();
+    xymodem_loop_flush();
     esp_reent_cleanup();
     unity_utils_evaluate_leaks_direct(0);
 }

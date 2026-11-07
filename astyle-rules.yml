@@ -38,7 +38,7 @@ submodules:
   - "/zlib/zlib/"
 
 generated_code:
-  # protobuf-c output is generated and must not be reformatted.
   check: false
   include:
   - "/network_provisioning/proto-c/"
+  - "/xymodem/include/xymodem_core.h"

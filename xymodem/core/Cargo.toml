@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 Espressif Systems (Shanghai) CO LTD
+# SPDX-License-Identifier: Apache-2.0
+# Workspace for the no_std XMODEM protocol engine and its C ABI shim.
+#
+# Two crates on purpose:
+#   * `proto` is a plain rlib -- `cargo test` builds it with std/unwind, so the
+#     whole state machine can be unit-tested on the host without a board.
+#   * `ffi` is a staticlib on firmware. Its panic handler is `cfg(not(test))`,
+#     so `cargo test -p xymodem_ffi` can still exercise the C ABI mapping on
+#     the host. Corrosion only ever builds `ffi` (`CRATES ffi`); cbindgen runs
+#     from its build.rs.
+[workspace]
+members = ["proto", "ffi"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+# The version this workspace is actually built and tested against. Cargo
+# refuses to build on an older toolchain with a clear error instead of failing
+# deep inside a dependency. Keep in sync with rust-toolchain.toml's channel
+# (see that file for why it is not pinned to an exact patch here).
+rust-version = "1.90"
+
+# One place for lint policy. Both crates opt in with `[lints] workspace = true`
+# in their own manifests; ci/cargo/run.sh turns every warning into an error.
+[workspace.lints.rust]
+# Explicit `unsafe {}` blocks even inside `unsafe fn`: keeps the unsafe
+# contract visible at the operation, not just at the signature.
+unsafe_op_in_unsafe_fn = "deny"
+unused_unsafe = "warn"
+
+[workspace.lints.clippy]
+# Every `pub unsafe fn` must document its contract, and every unsafe block
+# carries a `// SAFETY:` comment explaining why it holds. (These are Clippy
+# lints -- the rustc name `missing_safety_doc` is deprecated.)
+missing_safety_doc = "warn"
+undocumented_unsafe_blocks = "warn"
+
+[profile.release]
+# Firmware: size first, abort on panic (no unwinding runtime on bare metal).
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+incremental = false
+overflow-checks = false
+
+[profile.dev]
+panic = "abort"
+opt-level = 1

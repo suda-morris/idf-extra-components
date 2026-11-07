@@ -1,3 +1,4 @@
-# This file was generated using idf.py save-defconfig. It can be edited manually.
-CONFIG_ESP_TASK_WDT_EN=n
+# Console on USB Serial/JTAG keeps UART0 and UART1 free for the on-chip loopback pair.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_FREERTOS_HZ=1000
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192

@@ -1,0 +1,45 @@
+# Per-component cargo recipes (cargo test / fmt / clippy, crate-local checks).
+#
+# Not IDF host tests. Those still use idf.py + Unity and live in
+# build_and_run_apps.yml (linux target, IDF Docker). This workflow is a
+# plain ubuntu-latest runner with a Rust toolchain: no IDF image, no
+# flash/monitor. Multiplying cargo test across six IDF tags would not
+# catch more bugs.
+#
+# Opt-in is a directory layout, not a workflow edit:
+#
+#   <component>/ci/cargo/run.sh
+#
+# next to idf_component.yml. .github/tools/run_cargo_tests.py discovers
+# every such script. Extra apt/pip needs belong in the component's recipe.
+name: Cargo tests
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cargo:
+    name: Per-component cargo tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Run cargo tests
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python3 .github/tools/run_cargo_tests.py

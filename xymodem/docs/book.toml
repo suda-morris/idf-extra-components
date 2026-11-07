@@ -1,8 +1,14 @@
 [book]
-title = "X/YMODEM Documentation"
+title = "X/YMODEM Programming Guide"
 language = "en"
 
 [output.html]
 default-theme = "light"
 git-repository-url = "https://github.com/espressif/idf-extra-components/tree/master/xymodem"
 edit-url-template = "https://github.com/espressif/idf-extra-components/edit/master/xymodem/docs/{path}"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+
+[preprocessor]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"

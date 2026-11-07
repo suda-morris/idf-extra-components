@@ -24,6 +24,12 @@ repos:
         entry: python esp_schedule/check_port_isolation.py
         pass_filenames: false
         files: '^esp_schedule/(src|include|port)/.*\.[ch]$'
+    -   id: xymodem-cbindgen-header
+        name: regenerate xymodem include/xymodem_core.h
+        language: system
+        entry: xymodem/core/tools/update_header.sh
+        pass_filenames: false
+        files: '^xymodem/'
 -   repo: https://github.com/espressif/esp-idf-kconfig.git
     rev: v2.5.0
     hooks:

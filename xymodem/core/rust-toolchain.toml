@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Espressif Systems (Shanghai) CO LTD
+# SPDX-License-Identifier: Apache-2.0
+# Stable is enough: `riscv32imafc-unknown-none-elf` has shipped prebuilt
+# `core` since Rust 1.76, so no `-Z build-std` and no nightly are needed.
+#
+# `channel = "stable"` is intentionally a moving target for local development;
+# `rust-version` in Cargo.toml enforces the version actually tested. For fully
+# reproducible CI, override this file with an exact patch (e.g. "1.90.0") in
+# the CI image -- pinning it here would force a rustup download on offline /
+# air-gapped builders, which is worse than a documented MSRV.
+[toolchain]
+channel = "stable"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

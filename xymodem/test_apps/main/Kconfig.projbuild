@@ -9,18 +9,19 @@ menu "XYMODEM Test"
 
     config XYMODEM_TEST_SENDER_UART
         int "Sender UART port number"
-        default 1
-        range 1 5
+        default 0
+        range 0 5
         help
-            UART port used by the sender. Do not use the console UART (usually UART0).
+            UART port used by the sender. The console lives on USB Serial/JTAG,
+            so UART0 and UART1 are both free for the loopback pair.
 
     config XYMODEM_TEST_RECEIVER_UART
         int "Receiver UART port number"
-        default 2
-        range 1 5
+        default 1
+        range 0 5
         help
-            UART port used by the receiver. Must be different from the sender port.
-            Requires a target with at least three UART controllers (for example ESP32 or ESP32-S3).
+            UART port used by the receiver. Must be different from the sender
+            port. Needs a target with two HP UART controllers (C3/C6/P4/...).
 
     config XYMODEM_TEST_GPIO_A
         int "GPIO for sender TX / receiver RX"

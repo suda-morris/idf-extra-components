@@ -4,7 +4,9 @@
 
 # Programming Guide
 
-- [X/YMODEM](index.md)
+- [Start here](index.md)
+- [XMODEM](xmodem.md)
+- [YMODEM](ymodem.md)
 
 ---
 

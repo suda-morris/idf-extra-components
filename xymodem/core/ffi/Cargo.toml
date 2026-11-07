@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 Espressif Systems (Shanghai) CO LTD
+# SPDX-License-Identifier: Apache-2.0
+[package]
+name = "xymodem_ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+description = "C ABI export of the no_std XMODEM protocol engine"
+
+[lints]
+workspace = true
+
+[lib]
+name = "xymodem_ffi"
+crate-type = ["staticlib"]
+# `cargo test` uses cfg(test) so the panic handler is gated off and libtest
+# can own unwind. Firmware builds stay no_std + abort. Doctests stay off:
+# this crate is a C ABI, not rustdoc examples.
+doctest = false
+
+[dependencies]
+xymodem_proto = { path = "../proto" }
+
+[build-dependencies]
+cbindgen = "0.29"

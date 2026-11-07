@@ -1,0 +1,4 @@
+# Cargo / Corrosion build outputs. The header generated into the CMake build
+# directory is a build artifact too; only `include/xymodem_core.h` is tracked.
+target/
+Cargo.lock

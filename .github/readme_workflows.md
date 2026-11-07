@@ -1,4 +1,4 @@
-# ESP-IDF component CI
+# ESP-IDF component tests
 
 [build_and_run_apps.yml](workflows/build_and_run_apps.yml) owns events and
 concurrency, and calls the shared pipeline in
@@ -265,3 +265,38 @@ adapter retains node IDs as a JSON array and adds the worker execution type;
 the native GitHub exporter joins node IDs with spaces. GitHub's matrix job index
 distinguishes result artifacts. Planning writes `test-selection.json`; the
 version report provides the summary after builds and tests finish.
+
+# Cargo tests (not IDF host tests)
+
+IDF already has a host target: Unity cases built with `idf.py` and run
+through the same flash/monitor path as on-chip tests. That stays in the
+pipeline above (`linux` in `additional_build_targets`).
+
+Rust crates in this repo are a different thing. They call `cargo test` /
+`cargo fmt` / `cargo clippy` on the GitHub runner, with no IDF image and
+no `idf.py`. Those recipes must **not** be multiplied across six IDF
+Docker tags. They run in a separate workflow:
+
+[cargo_tests.yml](workflows/cargo_tests.yml) →
+[run_cargo_tests.py](tools/run_cargo_tests.py)
+
+A component opts in with a directory layout, not a workflow edit:
+
+```
+<component>/ci/cargo/run.sh
+```
+
+next to `idf_component.yml`. The runner discovers every such script and
+runs it from the component directory. The script is the cargo recipe
+(which packages, extra crate-local checks). The workflow only:
+
+1. Checks out the tree on `ubuntu-latest` (not `espressif/idf`).
+2. Installs a shared `stable` Rust toolchain with `rustfmt` and `clippy`
+   once per job. A workspace `rust-toolchain.toml` still applies when
+   `cargo` runs inside that component.
+3. Calls `python3 .github/tools/run_cargo_tests.py`.
+
+A future Rust component adds `ci/cargo/run.sh` and nothing under
+`.github/`. Extra `apt`/`pip` needs belong inside that script so the
+workflow stays generic. Failures are collected across components (no
+fail-fast).

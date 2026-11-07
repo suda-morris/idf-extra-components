@@ -1,0 +1,5 @@
+# Console stays on USB Serial/JTAG: UART0 is free for the example's own port,
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+# 5 ms poll period is 0 ticks at the default 100 Hz; without this the poll
+# loop busy-loops and the idle-task watchdog fires before the first handshake.
+CONFIG_FREERTOS_HZ=1000
