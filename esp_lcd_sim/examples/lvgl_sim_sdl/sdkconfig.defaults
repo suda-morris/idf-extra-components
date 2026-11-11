@@ -1,0 +1,21 @@
+CONFIG_IDF_TARGET="linux"
+
+CONFIG_LV_COLOR_DEPTH_24=y
+CONFIG_LV_FONT_MONTSERRAT_14=y
+# The default theme animates widget state changes (a press/release fades the
+# button color over ~150 ms). The example promises a time-independent,
+# deterministic frame for the golden-image and interaction tests, so disable
+# the transition: a press/release then repaints instantly and a frame captured
+# after the console's settle delay is always the settled one.
+CONFIG_LV_THEME_DEFAULT_TRANSITION_TIME=0
+
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=65536
+
+# Drive the sim panel from a stdin command line in the headless test.
+CONFIG_ESP_LCD_SIM_CONSOLE=y
+
+# Keep the native glibc syscalls on the linux target. The VFS layer interposes
+# read/write/select but not eventfd(), so with VFS enabled the eventfd that
+# esp_console_stop_repl() writes to interrupt its REPL task is a raw kernel fd
+# that esp_vfs_write() rejects with EBADF and the stop fails (ESP-IDF issue).
+# CONFIG_VFS_SUPPORT_IO is not set

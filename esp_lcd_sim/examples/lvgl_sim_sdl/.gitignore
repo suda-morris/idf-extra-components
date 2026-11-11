@@ -1,0 +1,4 @@
+screenshot.png
+# Interaction-test frame captures (regenerated on every pytest run).
+before.png
+after.png

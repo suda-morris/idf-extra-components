@@ -1,0 +1,14 @@
+menu "ESP LCD Sim"
+
+    config ESP_LCD_SIM_CONSOLE
+        bool "esp_console command interface"
+        default n
+        help
+            Enable esp_lcd_sim_console_register(), which registers a set of
+            esp_console commands (touch, reset, frame, wait, quit) that drive a
+            simulated panel from a command line, so a host test can script touch
+            input and frame export. This pulls in the esp_console component.
+            When disabled, esp_lcd_sim_console_register() returns
+            ESP_ERR_NOT_SUPPORTED and the panel itself is unaffected.
+
+endmenu
