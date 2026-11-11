@@ -1,0 +1,45 @@
+version: "0.1.0"
+description: Virtual esp_lcd panel powered by SDL, for simulating a display on the host
+url: https://github.com/espressif/idf-extra-components/tree/master/esp_lcd_sim
+repository: https://github.com/espressif/idf-extra-components.git
+issues: https://github.com/espressif/idf-extra-components/issues
+targets:
+  - linux
+
+dependencies:
+  idf: ">=6.0.0"
+  # esp_lcd_sim_screenshot_save_png() encodes through libpng (png_write_row).
+  # The public header does not expose libpng, so keep it out of the consumer's
+  # dependency list.
+  espressif/libpng:
+    version: "^1.6.58"
+    public: false
+
+# The SDL submodule is a full upstream checkout. Keep only what the build
+# actually consumes: headers, sources, wayland-protocols, cmake/ and the
+# top-level CMakeLists.txt/LICENSE.txt. Everything else is SDL's own tests,
+# examples, docs, CI and IDE projects.
+files:
+  exclude:
+    - "SDL/.github/**/*"
+    - "SDL/AGENTS.md"
+    - "SDL/Android.mk"
+    - "SDL/BUGS.txt"
+    - "SDL/CLAUDE.md"
+    - "SDL/CREDITS.md"
+    - "SDL/INSTALL.md"
+    - "SDL/README.md"
+    - "SDL/WhatsNew.txt"
+    - "SDL/android-project/**/*"
+    - "SDL/build-scripts/**/*"
+    - "SDL/docs/**/*"
+    - "SDL/examples/**/*"
+    - "SDL/test/**/*"
+    - "SDL/VisualC/**/*"
+    - "SDL/VisualC-GDK/**/*"
+    - "SDL/Xcode/**/*"
+
+sbom:
+  manifests:
+    - path: sbom_sdl.yml
+      dest: SDL
