@@ -1,0 +1,140 @@
+menu "CherryECAT Configuration"
+
+    # Hidden: the netdev port receives EtherCAT frames through the L2 TAP
+    # interface (esp_vfs_l2tap); selecting it also enables the esp_eth
+    # sublayer IO driver provider needed for the descriptor binding.
+    config CHERRYECAT_USE_L2TAP
+        bool
+        default y
+        select ESP_NETIF_L2_TAP
+
+    config CHERRYECAT_CMD_ENABLE
+        bool "Enable ethercat command line tool"
+        default y
+        help
+            Compile the vendored IgH style "ethercat" command (src/ec_cmd.c) and
+            register it with esp_console through esp_cherryecat_console_register().
+
+    config CHERRYECAT_PRINTF_COLOR_ENABLE
+        bool "Enable colored log output"
+        default y
+
+    config CHERRYECAT_ASSERT_DISABLE
+        bool "Disable internal assertions"
+        default n
+
+    config CHERRYECAT_PDO_MULTI_DOMAIN
+        bool "Use one LRW datagram per slave (multi domain)"
+        default n
+        help
+            By default all slaves share one LRW datagram. When enabled, each
+            slave gets its own LRW datagram at the cost of more frames per cycle.
+
+    config CHERRYECAT_MAX_NETDEVS
+        int "Maximum number of network devices"
+        range 1 2
+        default 1
+        help
+            Number of EtherCAT network devices. Backup redundancy is not
+            implemented upstream yet, one netdev is the supported setup.
+
+    menu "Resource limits"
+
+        config CHERRYECAT_MAX_PDO_BUFSIZE
+            int "PDO buffer size per netdev [bytes]"
+            range 1 2048
+            default 2048
+
+        config CHERRYECAT_PER_SM_MAX_PDOS
+            int "Maximum number of PDOs per sync manager"
+            range 1 16
+            default 3
+
+        config CHERRYECAT_PER_PDO_MAX_PDO_ENTRIES
+            int "Maximum number of entries per PDO"
+            range 1 64
+            default 8
+
+    endmenu
+
+    menu "Threads and timing"
+
+        config CHERRYECAT_NONPERIOD_PRIO
+            int "Non-periodic thread priority (smaller means higher priority)"
+            range 0 23
+            default 20
+
+        config CHERRYECAT_NONPERIOD_STACKSIZE
+            int "Non-periodic thread stack size [bytes]"
+            range 1536 16384
+            default 3072
+
+        config CHERRYECAT_NONPERIOD_WAITERS
+            int "Non-periodic datagram waiter count"
+            range 1 64
+            default 20
+
+        config CHERRYECAT_SCAN_PRIO
+            int "Bus scan thread priority (smaller means higher priority)"
+            range 0 23
+            default 21
+
+        config CHERRYECAT_SCAN_STACKSIZE
+            int "Bus scan thread stack size [bytes]"
+            range 1536 16384
+            default 3072
+
+        config CHERRYECAT_SCAN_INTERVAL_MS
+            int "Bus scan interval [ms]"
+            range 10 10000
+            default 100
+
+        config CHERRYECAT_CYCLE_TASK_PRIORITY
+            int "PDO cycle task priority (FreeRTOS, larger means higher priority)"
+            range 1 24
+            default 22
+            help
+                The task running the periodic PDO process (woken by the gptimer
+                alarm). Keep it above most application tasks for a low cycle
+                jitter; it must stay below the esp_timer task and Ethernet
+                driver priorities so driver processing is never starved.
+
+        config CHERRYECAT_CYCLE_TASK_STACKSIZE
+            int "PDO cycle task stack size [bytes]"
+            range 2048 16384
+            default 4096
+
+        config CHERRYECAT_CYCLE_TASK_CORE
+            int "PDO cycle task core affinity (-1 for no affinity)"
+            range -1 1
+            default -1
+            help
+                Pin the PDO cycle task to a core to further reduce cycle jitter.
+                -1 keeps the default scheduler affinity.
+
+    endmenu
+
+    menu "Debugging"
+
+        config CHERRYECAT_DBG_LEVEL
+            int "Master debug level (0 error, 1 warning, 2 info, 3 log)"
+            range 0 3
+            default 2
+
+        config CHERRYECAT_SLAVE_DBG_LEVEL
+            int "Slave debug level (0 error, 1 warning, 2 info, 3 log)"
+            range 0 3
+            default 2
+
+    endmenu
+
+    menu "Ethernet port buffers"
+
+        config CHERRYECAT_TXBUF_COUNT
+            int "Number of staged TX frame buffers per netdev"
+            range 1 20
+            default 10
+
+    endmenu
+
+endmenu
