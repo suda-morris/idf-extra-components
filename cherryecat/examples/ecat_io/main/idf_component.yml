@@ -1,0 +1,5 @@
+description: CherryECAT EtherCAT digital IO example
+dependencies:
+  espressif/cherryecat:
+    version: "*"
+    override_path: "../../../"
