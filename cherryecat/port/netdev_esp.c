@@ -73,6 +73,11 @@ typedef struct {
 static ec_netdev_t s_netdevs[CONFIG_EC_MAX_NETDEVS];
 static ec_netdev_esp_state_t s_states[CONFIG_EC_MAX_NETDEVS];
 
+/* One RX staging buffer per netdev: the stack processes a frame between
+   get_rxbuf() and release_rxbuf() with a single consumer at a time, so a
+   static buffer avoids heap operations inside the stack's critical
+   sections. */
+static uint8_t s_rxbuf[CONFIG_EC_MAX_NETDEVS][EC_NETDEV_RXBUF_SIZE];
 static ec_netdev_esp_rx_item_t s_rx_inflight[CONFIG_EC_MAX_NETDEVS];
 
 static uint8_t s_txbuf[CONFIG_EC_MAX_NETDEVS][CONFIG_CHERRYECAT_TXBUF_COUNT][EC_NETDEV_TXBUF_SIZE];
@@ -194,22 +199,17 @@ EC_FAST_CODE_SECTION int ec_netdev_low_level_get_rxbuf(ec_netdev_t *netdev, uint
 {
     ec_netdev_esp_state_t *state = &s_states[netdev->index];
     ec_netdev_esp_rx_item_t *inflight = &s_rx_inflight[netdev->index];
+    uint8_t *rxbuf = s_rxbuf[netdev->index];
     ssize_t frame_len;
-
-    inflight->buffer = malloc(EC_NETDEV_RXBUF_SIZE);
-    if (inflight->buffer == NULL) {
-        return -1;
-    }
 
     /* The descriptor was opened O_NONBLOCK: read() returns -1/EAGAIN when
        no (filtered) frame is queued. */
-    frame_len = read(state->l2tap_fd, inflight->buffer, EC_NETDEV_RXBUF_SIZE);
+    frame_len = read(state->l2tap_fd, rxbuf, EC_NETDEV_RXBUF_SIZE);
     if (frame_len <= 0) {
-        free(inflight->buffer);
-        inflight->buffer = NULL;
         return -1;
     }
 
+    inflight->buffer = rxbuf;
     inflight->length = (uint32_t)frame_len;
     *buffer = inflight->buffer;
     *size = inflight->length;
@@ -220,9 +220,7 @@ EC_FAST_CODE_SECTION void ec_netdev_low_level_release_rxbuf(ec_netdev_t *netdev)
 {
     ec_netdev_esp_rx_item_t *inflight = &s_rx_inflight[netdev->index];
 
-    /* The L2 TAP read path already released the Ethernet driver buffer; the
-       copy handed out here is owned by the port. */
-    free(inflight->buffer);
+    /* The staging buffer is reused by the next get_rxbuf() call. */
     inflight->buffer = NULL;
     inflight->length = 0;
 }
@@ -325,7 +323,6 @@ esp_err_t esp_cherryecat_detach_netdev(uint8_t netdev_index)
     (void)esp_eth_sublayer_del(state->sublayer);
     state->sublayer = NULL;
 
-    free(s_rx_inflight[netdev_index].buffer);
     s_rx_inflight[netdev_index].buffer = NULL;
     s_rx_inflight[netdev_index].length = 0;
 

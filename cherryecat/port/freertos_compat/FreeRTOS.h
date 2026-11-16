@@ -24,3 +24,15 @@
 #define taskENTER_CRITICAL() portENTER_CRITICAL(NULL)
 #undef taskEXIT_CRITICAL
 #define taskEXIT_CRITICAL() portEXIT_CRITICAL(NULL)
+
+/* The upstream stack relies on a single-core execution model: the periodic
+   process runs from a timer ISR on upstream targets, so its unlocked
+   datagram queue operations are mutually exclusive with the thread critical
+   sections because those disable interrupts. On ESP-IDF the periodic process
+   runs in a task, so pin every thread the OSAL creates (bus scan, non
+   periodic) to one core together with the PDO cycle task
+   (CONFIG_CHERRYECAT_CYCLE_TASK_CORE, default 0) to restore that
+   assumption. */
+#undef xTaskCreate
+#define xTaskCreate(entry, name, stack_size, args, prio, handle) \
+    xTaskCreatePinnedToCore((entry), (name), (stack_size), (args), (prio), (handle), CONFIG_CHERRYECAT_TASK_CORE)

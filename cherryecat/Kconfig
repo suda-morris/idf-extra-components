@@ -89,6 +89,19 @@ menu "CherryECAT Configuration"
             range 10 10000
             default 100
 
+        config CHERRYECAT_TASK_CORE
+            int "Core for the stack threads (scan, non-periodic)"
+            range 0 1
+            default 0
+            help
+                The upstream stack was designed for single-core targets: the
+                periodic process ran in a timer ISR, so its unlocked datagram
+                queue operations relied on interrupt disabling for mutual
+                exclusion. On ESP-IDF the periodic process runs in the PDO
+                cycle task, so the stack threads and the cycle task must all
+                run on the same core to keep that exclusion. Keep this equal
+                to CHERRYECAT_CYCLE_TASK_CORE.
+
         config CHERRYECAT_CYCLE_TASK_PRIORITY
             int "PDO cycle task priority (FreeRTOS, larger means higher priority)"
             range 1 24
@@ -105,12 +118,13 @@ menu "CherryECAT Configuration"
             default 4096
 
         config CHERRYECAT_CYCLE_TASK_CORE
-            int "PDO cycle task core affinity (-1 for no affinity)"
-            range -1 1
-            default -1
+            int "PDO cycle task core affinity"
+            range 0 1
+            default 0
             help
-                Pin the PDO cycle task to a core to further reduce cycle jitter.
-                -1 keeps the default scheduler affinity.
+                Must stay equal to CHERRYECAT_TASK_CORE: the cycle task and
+                the stack threads share unlocked data structures that are
+                only safe when they never run concurrently (same core).
 
     endmenu
 
