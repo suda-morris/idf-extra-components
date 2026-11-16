@@ -1,0 +1,5 @@
+description: CherryECAT EtherCAT master with the IgH style ethercat console command
+dependencies:
+  espressif/cherryecat:
+    version: "*"
+    override_path: "../../../"
