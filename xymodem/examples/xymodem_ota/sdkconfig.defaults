@@ -1,0 +1,14 @@
+# Console stays on USB Serial/JTAG: UART0 is free for the transfer port.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+# 10 ms poll period is 0 ticks at the default 100 Hz; without this the poll
+# loop busy-loops and the idle-task watchdog fires before the first handshake.
+CONFIG_FREERTOS_HZ=1000
+# Two OTA slots, no factory app (see partitions.csv).
+CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# esp_ota_write() disables the flash cache while erasing/writing; the UHCI RX
+# ISR (and its GDMA machinery) must keep running through that window or the
+# incoming stream is lost mid-block. This selects the IRAM variants of the
+# UHCI/GDMA ISRs; the RX callback in xymodem_ota_main.c is IRAM_ATTR too.
+CONFIG_UHCI_ISR_CACHE_SAFE=y

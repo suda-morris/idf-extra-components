@@ -1,0 +1,21 @@
+menu "XYMODEM OTA Example Configuration"
+
+    config EXAMPLE_UART_PORT_NUM
+        int "UART port number"
+        default 0
+        help
+            The UART port attached to the UHCI DMA controller.
+
+    config EXAMPLE_UART_TX_GPIO
+        int "UART TX GPIO"
+        default 11
+
+    config EXAMPLE_UART_RX_GPIO
+        int "UART RX GPIO"
+        default 12
+
+    config EXAMPLE_UART_BAUD_RATE
+        int "UART baud rate"
+        default 115200
+
+endmenu

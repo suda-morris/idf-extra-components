@@ -10,3 +10,8 @@ xymodem/examples/xymodem_event:
   enable:
     - if: IDF_TARGET in ["esp32c5"]
       reason: "RISC-V reference targets for the Rust engine"
+
+xymodem/examples/xymodem_ota:
+  enable:
+    - if: IDF_TARGET in ["esp32c5"]
+      reason: "UHCI-capable reference target for the Rust engine"
