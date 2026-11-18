@@ -27,7 +27,7 @@ pub const CRC: u8 = 0x43;
 pub const BLOCK_128: usize = 128;
 pub const BLOCK_1024: usize = 1024;
 /// Longest frame on the wire: header(3) + 1K payload + CRC16(2).
-pub const MAX_FRAME_LEN: usize = 3 + BLOCK_1024 + 2;
+const MAX_FRAME_LEN: usize = 3 + BLOCK_1024 + 2;
 const _: () = assert!(packet_len(STX, Check::Crc16) == MAX_FRAME_LEN);
 const _: () = assert!(packet_len(STX, Check::Sum8) <= MAX_FRAME_LEN);
 const _: () = assert!(packet_len(SOH, Check::Crc16) <= MAX_FRAME_LEN);

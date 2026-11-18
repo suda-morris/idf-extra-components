@@ -50,11 +50,7 @@ void xymodem_loop_wait_sender(void);
 /** Wait until both ends reach XYMODEM_ST_COMPLETE. */
 void xymodem_loop_wait_both(void);
 
-xymodem_handle_t xymodem_loop_sender(void);
-xymodem_handle_t xymodem_loop_receiver(void);
-
 const uint8_t *xymodem_loop_tx(void);
-size_t xymodem_loop_tx_len(void);
 const uint8_t *xymodem_loop_rx(void);
 size_t xymodem_loop_rx_len(void);
 

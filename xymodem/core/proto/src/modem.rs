@@ -1253,7 +1253,7 @@ impl<T: Io> Engine<T> {
                     Ok(n) if n > cap => Produced::IoFail,
                     Ok(n) => {
                         // XMODEM-1K: a short last block (<= 128) goes out as
-                        // SOH, matching sx/lrzsz and the 0.1.x driver.
+                        // SOH, matching sx/lrzsz.
                         let block_len = if cfg.block_1k && n > BLOCK_128 {
                             BLOCK_1024
                         } else {

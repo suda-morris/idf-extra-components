@@ -315,24 +315,9 @@ void xymodem_loop_wait_both(void)
     wait_status(s_recv.handle, XYMODEM_ST_COMPLETE, "receiver did not complete");
 }
 
-xymodem_handle_t xymodem_loop_sender(void)
-{
-    return s_send.handle;
-}
-
-xymodem_handle_t xymodem_loop_receiver(void)
-{
-    return s_recv.handle;
-}
-
 const uint8_t *xymodem_loop_tx(void)
 {
     return s_tx;
-}
-
-size_t xymodem_loop_tx_len(void)
-{
-    return s_tx_len;
 }
 
 const uint8_t *xymodem_loop_rx(void)

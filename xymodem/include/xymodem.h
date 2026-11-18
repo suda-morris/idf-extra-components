@@ -117,14 +117,13 @@ typedef struct {
  * @param[in] handle The instance (`this`) reporting the event.
  * @param[in] ctx    User context from xymodem_config_t::user_ctx.
  * @param[in] event  One of XYMODEM_EV_*.
- *                   XYMODEM_EV_HANDSHAKE fires on a classic receiver's first
- *                   data block, and on a sender when the peer's request is
- *                   accepted and payload starts. A YMODEM receiver uses
- *                   on_file for that moment instead.
  *                   XYMODEM_EV_FILE_COMPLETE fires at each YMODEM file EOT
  *                   (the session stays open for the next header);
  *                   XYMODEM_EV_COMPLETE still marks the whole batch / classic
- *                   transfer.
+ *                   transfer. The list is deliberately short: block arrivals
+ *                   are exactly the data_sink calls, payload pulls are
+ *                   exactly the data_source calls, a block-0 header is
+ *                   on_file.
  * @param[in] arg    On XYMODEM_EV_FAILED, a negative XYMODEM_ERR_* code;
  *                   0 otherwise. Progress is not an event parameter: count
  *                   the bytes in your own data_sink / data_source callbacks

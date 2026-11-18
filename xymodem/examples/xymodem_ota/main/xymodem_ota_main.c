@@ -72,7 +72,6 @@ typedef struct {
                      * is the digest, so mode != RX_OTA at completion). */
     esp_ota_handle_t ota;
     const esp_partition_t *part;
-    uint64_t declared;
     size_t written;
     char digest[97];
     size_t digest_len;
@@ -138,7 +137,6 @@ static bool app_on_file(xymodem_handle_t handle, void *ctx, const char *name,
         app->got_image = true;
         app->ota = ota;
         app->part = part;
-        app->declared = size;
         app->written = 0;
         ESP_LOGI(TAG, "receiving \"%s\" (%" PRIu64 " bytes) into %s", name, size, part->label);
         return true;

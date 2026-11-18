@@ -176,7 +176,6 @@ Events, if you care to log them:
 | Event | YMODEM receive |
 |---|---|
 | `on_file` | Block 0 accepted — this is the receiver-side handshake |
-| `XYMODEM_EV_BLOCK` | Each data packet stored |
 | `XYMODEM_EV_FILE_COMPLETE` | This file's EOT; the session stays open for the next header |
 | `XYMODEM_EV_COMPLETE` | Empty block 0, or the sender went silent after EOT |
 

@@ -190,9 +190,9 @@ void app_main(void)
     ESP_ERROR_CHECK(xymodem_new(&cfg, &app->handle));
 
     ESP_LOGI(TAG, "Waiting for an X/YMODEM upload...");
-    /* After COMPLETE, xymodem_role() is NONE: the application owns the next
-     * phase. `need_end` means the echo carried a block 0, so a following
-     * empty-name xymodem_start_send() closes the YMODEM batch for the host. */
+    /* After COMPLETE the engine is idle: the application owns the next phase.
+     * `need_end` means the echo carried a block 0, so a following empty-name
+     * xymodem_start_send() closes the YMODEM batch for the host. */
     bool receiving = true;
     bool need_end = false;
     ESP_ERROR_CHECK(xymodem_start_recv(app->handle));
