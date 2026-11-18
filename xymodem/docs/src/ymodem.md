@@ -92,18 +92,22 @@ firmware.bin \0 200 \0 00 00 00 ... 00
   number are further optional fields, each separated by a single space,
   and "fields may not be skipped". This component does not send them.
   A header of `name NUL size NUL` is what VMS `rb`/`sb` send, and what
-  Forsberg's table lists as a valid subset. Receivers that insist on an
-  octal date after the size (Pro-YAM's default style) need a style flag
-  on the **host** tool; the wire we emit is spec-legal.
+  Forsberg's table lists as a valid subset. (lrzsz's `sb` goes one step
+  further and appends `date mode serial nleft` after the size — this
+  receiver parses that too, stopping the size at the first space.)
+  Receivers that insist on an octal date after the size (Pro-YAM's
+  default style) need a style flag on the **host** tool; the wire we
+  emit is spec-legal.
 
 An empty name — the first data byte is NUL, the rest zeros — is the
 batch terminator. It carries no payload. The receiver ACKs it and the
 session completes.
 
 YMODEM is CRC-16 only. A header-ful sender ignores a NAK during the
-header handshake (`'C'` is what asks for block 0). After the header is
-ACKed, a NAK means "the `'C'` for block 1 was lost, send block 1", not
-"switch to checksum".
+header handshake (`'C'` is what asks for block 0; a NAK while the
+header's ACK is still pending re-sends the same header). After the
+header is ACKed, a NAK means "the `'C'` for block 1 was lost, send
+block 1", not "switch to checksum".
 
 ## `on_file`: accept or refuse before any payload
 
@@ -184,9 +188,10 @@ There is no handshake event: a YMODEM receiver already has `on_file` for
 the same moment.
 
 A single-file host tool (`sb one_file`) often skips the empty terminator.
-After EOT the receiver sends `'C'` and waits a couple of packet timeouts;
-silence is treated as a successful end. You still see `COMPLETE`. You
-may also see `FILE_COMPLETE` first.
+After EOT the receiver sends `'C'` and keeps re-asking every
+`response_timeout_ms`, up to `max_retries` times; silence after that is a
+successful end. You still see `COMPLETE`. You may also see
+`FILE_COMPLETE` first.
 
 ## Case 2: send a named file
 

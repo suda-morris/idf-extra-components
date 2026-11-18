@@ -30,7 +30,7 @@ sequenceDiagram
     Note over ESP: xymodem_start_recv()
     ESP->>PC: 'C' (request CRC-16)
     Note over PC: handshake done
-    PC->>ESP: packet 1 (128 bytes + padding)
+    PC->>ESP: packet 1 (128 bytes)
     ESP->>PC: ACK
     PC->>ESP: packet 2 (72 bytes + padding)
     ESP->>PC: ACK
@@ -118,7 +118,9 @@ not yet been ACKed.
 Christensen: the receiver has a timeout in the order of ten seconds. Each
 time it fires, the receiver sends NAK. The first NAK is what wakes a
 sender that is sitting idle. Optionally the receiver sends NAK immediately
-rather than waiting for the first timeout; this component does that.
+rather than waiting for the first timeout; this component sends its request
+byte immediately at `start_recv` (that is `'C'` in the default AUTO/CRC16
+mode, NAK only when SUM8 is forced).
 
 CRC-16 is requested by sending `'C'` (`0x43`) instead of NAK, for the
 **first** packet only. If the sender is an old checksum-only program, it
@@ -210,8 +212,8 @@ than reporting a failure after the payload has landed.
 
 A single CAN (`0x18`) is treated as line noise: an ACK or SOH that got
 hit can look like CAN, which is why Christensen never made a one-byte
-abort standard. Two consecutive CANs, without a framing error between
-them, cancel the transfer
+abort standard. Two CANs — even with a few stray bytes between them —
+cancel the transfer
 ([`XYMODEM_ERR_CANCEL_BY_PEER`](api.md#enum-xymodem_err_t)).
 
 [`xymodem_cancel()`](api.md#function-xymodem_cancel) is the local
@@ -280,6 +282,10 @@ void app_main(void)
         int st = xymodem_status(app.handle);
         if (st == XYMODEM_ST_COMPLETE) {
             /* app.buf[0 .. app.used) is the file, SUB padding included */
+            break;
+        }
+        if (st == XYMODEM_ST_FAILED) {
+            /* e.g. the buffer filled up: xymodem_error() says why */
             break;
         }
     }

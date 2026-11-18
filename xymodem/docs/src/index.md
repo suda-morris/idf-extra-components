@@ -153,8 +153,9 @@ for (;;) {
         xymodem_on_receive(app.handle, wire, (size_t)n); /* task path: in place */
     }
     xymodem_poll(app.handle);
-    if (xymodem_status(app.handle) == XYMODEM_ST_COMPLETE) {
-        break;
+    xymodem_status_t st = xymodem_status(app.handle);
+    if (st == XYMODEM_ST_COMPLETE || st == XYMODEM_ST_FAILED) {
+        break; /* check xymodem_error() when FAILED */
     }
 }
 ```
@@ -204,6 +205,18 @@ are exactly your `data_source` calls, and a block-0 header is `on_file`.
 | [`XYMODEM_EV_COMPLETE`](api.md#enum-xymodem_event_t) | The session / batch is done |
 | [`XYMODEM_EV_FAILED`](api.md#enum-xymodem_event_t) | `arg` is the `XYMODEM_ERR_*` code |
 
+A session already in flight is not silently replaced:
+`xymodem_start_recv()` / `xymodem_start_send()` return
+`ESP_ERR_INVALID_STATE`. Wait for `COMPLETE` or `FAILED`, then start the
+next one. The same handle is reused; you do not call
+[`xymodem_new()`](api.md#function-xymodem_new) per file.
+
+If `emit`, `data_sink` or `data_source` returns anything other than
+`ESP_OK`, the engine aborts immediately with
+[`XYMODEM_ERR_IO`](api.md#enum-xymodem_err_t), emits two CAN bytes, and
+does not ACK or send EOT afterwards. The failed operation did not happen;
+pretending the file is complete would be worse.
+
 ### Recipe: a progress bar
 
 Progress is not an API — it is a counter in the callback you already wrote:
@@ -229,18 +242,6 @@ static esp_err_t load(xymodem_handle_t h, void *ctx, uint8_t *buf, size_t len, s
 
 No duplicates reach the callbacks (the engine ACKs them but does not deliver
 them twice), so the counters are exact.
-
-A session already in flight is not silently replaced:
-`xymodem_start_recv()` / `xymodem_start_send()` return
-`ESP_ERR_INVALID_STATE`. Wait for `COMPLETE` or `FAILED`, then start the
-next one. The same handle is reused; you do not call
-[`xymodem_new()`](api.md#function-xymodem_new) per file.
-
-If `emit`, `data_sink` or `data_source` returns anything other than
-`ESP_OK`, the engine aborts immediately with
-[`XYMODEM_ERR_IO`](api.md#enum-xymodem_err_t), emits two CAN bytes, and
-does not ACK or send EOT afterwards. The failed operation did not happen;
-pretending the file is complete would be worse.
 
 ## Defaults you can leave alone
 
