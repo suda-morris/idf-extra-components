@@ -180,10 +180,9 @@ Events, if you care to log them:
 | `XYMODEM_EV_FILE_COMPLETE` | This file's EOT; the session stays open for the next header |
 | `XYMODEM_EV_COMPLETE` | Empty block 0, or the sender went silent after EOT |
 
-[`XYMODEM_EV_HANDSHAKE`](api.md#enum-xymodem_event_t) is a classic-XMODEM
-and sender-side event. A YMODEM receiver already has `on_file` for "the
-header landed and CRC-16 is agreed", so the engine does not fire
-`HANDSHAKE` a second time.
+There is no handshake event: a YMODEM receiver already has `on_file` for
+"the header landed", and a classic receiver's first `data_sink` call marks
+the same moment.
 
 A single-file host tool (`sb one_file`) often skips the empty terminator.
 After EOT the receiver sends `'C'` and waits a couple of packet timeouts;
@@ -237,6 +236,14 @@ This library keeps **no batch state**. The wire timing *is* the batch:
   receiver's fresh `'C'`, which is exactly the YMODEM batch cadence.
   Wait for `XYMODEM_ST_COMPLETE` between calls — starting on top of an
   in-flight session is `ESP_ERR_INVALID_STATE`.
+
+  That `'C'` usually arrives while the previous session has just completed
+  (the receiver sends it immediately after ACKing EOT). The engine answers
+  nothing then — this session is over, and the `'C'` asks for the *next*
+  header, not for a retransmit — so the receiver re-requests `'C'` after its
+  own timeout, and the next `start_send()` answers that one. One receiver
+  timeout cycle per batch boundary; that is the price of the batch living in
+  the application instead of a library state machine.
 
 ```mermaid
 sequenceDiagram

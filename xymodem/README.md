@@ -89,7 +89,9 @@ explicitly with `xymodem_start_recv()` / `xymodem_start_send()` -- an echo
 server simply alternates the two calls. Sessions are independent on the wire
 (block numbering restarts at 1), so to the peer this looks like separate
 transfers. See [`examples/xymodem_event`](examples/xymodem_event) for the full
-echo demo.
+echo demo, and [`examples/xymodem_ota`](examples/xymodem_ota) for serial
+firmware updates streamed through UHCI (UART DMA) with a sha256-verified boot
+switch.
 
 ### Block 0: file name and size
 
@@ -117,9 +119,10 @@ xymodem_start_send(h, &(xymodem_file_info_t){ .name = "", .size = 0 });
 A YMODEM batch (several files over one wire session) is built by the
 application: call `xymodem_start_send()` once per file, wait for each
 session to complete, then once more with an empty name. Each call waits for
-the receiver's fresh `C`, which is exactly the YMODEM batch wire timing, so
-the library needs no batch bookkeeping of its own. YMODEM-G (streaming, no
-per-block ACK) is out of scope.
+the receiver's fresh `C` (a `C` that landed between two sessions is
+re-requested by the receiver on its own timeout), which is exactly the
+YMODEM batch wire timing, so the library needs no batch bookkeeping of its
+own. YMODEM-G (streaming, no per-block ACK) is out of scope.
 
 ## Supported targets
 

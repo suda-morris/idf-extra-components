@@ -106,9 +106,6 @@ static void app_event(xymodem_handle_t handle, void *ctx, xymodem_event_t event,
 {
     (void)handle; (void)ctx; (void)arg;
     switch (event) {
-    case XYMODEM_EV_HANDSHAKE:
-        ESP_LOGI(TAG, "handshake negotiated");
-        break;
     case XYMODEM_EV_FILE_COMPLETE:
         ESP_LOGI(TAG, "file complete (batch continues)");
         break;
@@ -225,8 +222,10 @@ void app_main(void)
                 begin_send(app, NULL); /* classic, header-less echo */
             }
             receiving = false;
-            /* Armed as sender: the peer's 'C'/NAK is now consumed. Logged so
-             * the host test can start recv() without losing the first request. */
+            /* Armed as sender: the engine now waits for the peer's request
+             * byte. One that already landed between the sessions is answered
+             * when the peer re-requests after its own timeout. Logged so the
+             * host test can start recv() before the echo begins. */
             ESP_LOGI(TAG, "Echo sender ready");
         } else if (st == XYMODEM_ST_COMPLETE && need_end) {
             /* Several start_send calls == a batch: this empty-name session

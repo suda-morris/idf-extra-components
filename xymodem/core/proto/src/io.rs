@@ -70,12 +70,15 @@ pub trait Io {
 }
 
 /// Protocol lifecycle events delivered through [`Io::on_event`].
+///
+/// Deliberately small: every event here is something the application
+/// **cannot** observe through its own callbacks. Block arrivals are exactly
+/// the [`Io::data_sink`] calls, payload pulls are exactly the
+/// [`Io::data_source`] calls, and a block-0 header is [`Io::on_file`] — so
+/// progress is a one-line counter in the callback you already wrote, not an
+/// engine feature.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Event {
-    /// The handshake completed and the negotiated check mode is known.
-    Handshake,
-    /// A data block was accepted (receiver) or acknowledged (sender).
-    Block,
     /// A YMODEM file ended (EOT after a block-0 header). The session stays
     /// open for the next header or the empty terminator; [`Event::Complete`]
     /// still marks the whole batch. Classic header-less transfers skip this

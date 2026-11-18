@@ -209,16 +209,6 @@ impl Default for Config {
     }
 }
 
-/// Which side of the wire this engine is currently playing. `None` when idle
-/// or terminal: after `Complete` there is no role, the application chooses
-/// the next `start_*`.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Role {
-    None,
-    Recv,
-    Send,
-}
-
 /// CRC `'C'` handshake attempts (including the first emission) before
 /// [`CheckMode::Auto`] falls back to SUM8. Matches common XMODEM-CRC
 /// practice, and gives a YMODEM sender time to start before we switch to
@@ -271,6 +261,8 @@ enum SendPhase {
     HeaderHandshake,
     /// Block 0 sent, waiting for its ACK.
     HeaderWaitAck,
+    /// Block 0 ACKed; waiting for the receiver's second 'C' to send block 1.
+    WaitSecondC,
     /// Waiting for ACK/NAK of the block just sent.
     WaitAck,
     /// Sent EOT, waiting for its ACK.
@@ -281,7 +273,7 @@ impl SendPhase {
     const fn is_handshake(self) -> bool {
         matches!(
             self,
-            Self::Handshake | Self::HeaderHandshake | Self::HeaderWaitAck
+            Self::Handshake | Self::HeaderHandshake | Self::WaitSecondC | Self::HeaderWaitAck
         )
     }
 }
@@ -331,60 +323,46 @@ struct SendSession {
     /// True once a peer byte (NAK/'C'/ACK) has been seen. Distinguishes
     /// "peer never answered" (`NoResponse`) from "transfer broke midway".
     started: bool,
-    /// This session sent a block 0.
-    has_header: bool,
     /// The data source is exhausted -> send EOT next.
     source_exhausted: bool,
-    /// NUL-free file name for block 0 (copied at start_send).
-    file_name: [u8; 128],
-    file_name_len: usize,
-    /// Declared file size for block 0.
-    file_size: u64,
     /// The exact bytes of the block awaiting ACK (for retransmit).
     pending: [u8; 3 + BLOCK_1024 + 2],
     pending_len: usize,
 }
 
 impl SendSession {
-    fn new(has_header: bool) -> Self {
+    fn new() -> Self {
         Self {
             phase: SendPhase::Handshake,
             blk: 1,
             started: false,
-            has_header,
             source_exhausted: false,
-            file_name: [0; 128],
-            file_name_len: 0,
-            file_size: 0,
             pending: [0; 3 + BLOCK_1024 + 2],
             pending_len: 0,
         }
     }
 
     /// Build block 0 into `pending`: SOH 00 FF <name> 00 <decimal size> 00
-    /// ... CRC16. An empty name yields the all-zero batch terminator.
-    fn build_header_block(&mut self) {
+    /// ... CRC16. An empty name yields the all-zero batch terminator. Called
+    /// once, at `start_send`; the file metadata is not kept afterwards.
+    fn build_header_block(&mut self, name: &[u8], size: u64) {
         let mut digits = [0u8; 20];
-        let nd = u64_ascii(self.file_size, &mut digits);
+        let nd = u64_ascii(size, &mut digits);
         self.pending[0] = SOH;
         self.pending[1] = 0;
         self.pending[2] = 0xFF;
-        self.pending[3..3 + self.file_name_len]
-            .copy_from_slice(&self.file_name[..self.file_name_len]);
-        let mut p = 3 + self.file_name_len;
+        self.pending[3..3 + name.len()].copy_from_slice(name);
+        let mut p = 3 + name.len();
         self.pending[p] = 0; // name terminator
         p += 1;
-        if self.file_name_len > 0 {
+        if !name.is_empty() {
             self.pending[p..p + nd].copy_from_slice(&digits[20 - nd..]);
             p += nd;
             self.pending[p] = 0; // size terminator
-            p += 1;
         }
-        // Everything after the name/size NULs stays zero (the batch terminator
-        // is exactly this with an empty name).
-        for b in self.pending[p..3 + BLOCK_128].iter_mut() {
-            *b = 0;
-        }
+        // Everything past the name/size NULs is already zero (`pending` starts
+        // zeroed and block 0 is built before any data block reuses it), which
+        // is exactly what the spec requires of unused header bytes.
         let crc = frame::crc16(&self.pending[3..3 + BLOCK_128]);
         self.pending[3 + BLOCK_128] = (crc >> 8) as u8;
         self.pending[4 + BLOCK_128] = crc as u8;
@@ -521,14 +499,6 @@ impl<T: Io> Engine<T> {
         }
     }
 
-    /// Whether a new session may be started now (idle or terminal).
-    /// `start_recv`/`start_send` check this themselves and return
-    /// [`StartError::Busy`], so this is only needed by embedders that want to
-    /// probe before committing.
-    pub fn can_start(&self) -> bool {
-        self.session.can_start()
-    }
-
     /// Start a receive session. Emits the handshake request right away.
     ///
     /// Everything protocol-related is reset: session state, block counters,
@@ -560,22 +530,19 @@ impl<T: Io> Engine<T> {
         if !self.session.can_start() {
             return Err(StartError::Busy);
         }
-        let (has_header, check) = match kind {
-            SessionKind::Classic => (false, self.cfg.check_mode.initial()),
-            SessionKind::File(_) | SessionKind::BatchEnd => (true, Check::Crc16),
+        let check = match kind {
+            SessionKind::Classic => self.cfg.check_mode.initial(),
+            SessionKind::File(_) | SessionKind::BatchEnd => Check::Crc16,
         };
-        let mut send = SendSession::new(has_header);
+        let mut send = SendSession::new();
         send.phase = match kind {
             SessionKind::Classic => SendPhase::Handshake,
             SessionKind::File(f) => {
-                send.file_name[..f.name().len()].copy_from_slice(f.name());
-                send.file_name_len = f.name().len();
-                send.file_size = f.size();
-                send.build_header_block();
+                send.build_header_block(f.name(), f.size());
                 SendPhase::HeaderHandshake
             }
             SessionKind::BatchEnd => {
-                send.build_header_block();
+                send.build_header_block(&[], 0);
                 SendPhase::HeaderHandshake
             }
         };
@@ -603,15 +570,6 @@ impl<T: Io> Engine<T> {
 
     pub fn status(&self) -> Status {
         self.session.status()
-    }
-
-    /// Current role. `None` when idle or the session has finished.
-    pub fn role(&self) -> Role {
-        match self.session {
-            Session::Recv(_) => Role::Recv,
-            Session::Send(_) => Role::Send,
-            Session::Idle | Session::Complete | Session::Failed(_) => Role::None,
-        }
     }
 
     /// Feed bytes received from the hardware. Any slice is valid: partial
@@ -647,21 +605,6 @@ impl<T: Io> Engine<T> {
             return;
         }
         self.abort(Failure::Local(LocalReason::Cancelled));
-    }
-
-    /// Report that an [`Io`] callback failed (emit/sink/source returned an
-    /// error). Aborts with `Failure::Local(LocalReason::Io)`, which emits
-    /// CAN and is reported as the same error code through both `status()` and
-    /// `on_event()`.
-    ///
-    /// Safe to call at any time. A late failure -- e.g. the final ACK could
-    /// not be sent -- must not be reported as a successful transfer, so even
-    /// an already-`Complete` session is turned into a failure here.
-    pub fn fail_io(&mut self) {
-        if matches!(&self.session, Session::Idle | Session::Failed(_)) {
-            return;
-        }
-        self.abort(Failure::Local(LocalReason::Io));
     }
 
     // ------------------------------------------------------------------
@@ -734,12 +677,20 @@ impl<T: Io> Engine<T> {
         true
     }
 
-    fn emit_handshake(&mut self, now_ms: u32) -> bool {
-        if !self.emit(&[self.common.check.request_byte()]) {
-            return false;
+    /// [`Engine::emit`] plus the one thing every successful emission needs:
+    /// re-arming the timer that guards the answer we just asked for.
+    fn emit_armed(&mut self, bytes: &[u8], timeout_ms: u32, now_ms: u32) -> bool {
+        if self.emit(bytes) {
+            self.common.arm(timeout_ms, now_ms);
+            true
+        } else {
+            false
         }
-        self.arm(self.cfg.packet_ms(), now_ms);
-        true
+    }
+
+    fn emit_handshake(&mut self, now_ms: u32) -> bool {
+        let req = self.common.check.request_byte();
+        self.emit_armed(&[req], self.cfg.packet_ms(), now_ms)
     }
 
     // ---- packet / control handling --------------------------------------
@@ -816,20 +767,13 @@ impl<T: Io> Engine<T> {
         };
         match action {
             Action::Header => self.handle_header(payload, now_ms),
-            Action::FirstData => {
-                self.io.on_event(Event::Handshake);
-                self.accept_data_packet(payload, blk, now_ms);
-            }
+            Action::FirstData => self.accept_data_packet(payload, blk, now_ms),
             Action::Data => self.accept_data_packet(payload, blk, now_ms),
             Action::Duplicate => {
-                if self.emit(&[ACK]) {
-                    self.arm(self.cfg.packet_ms(), now_ms);
-                }
+                self.emit_armed(&[ACK], self.cfg.packet_ms(), now_ms);
             }
             Action::Nak => {
-                if self.emit(&[NAK]) {
-                    self.arm(self.cfg.packet_ms(), now_ms);
-                }
+                self.emit_armed(&[NAK], self.cfg.packet_ms(), now_ms);
             }
         }
     }
@@ -877,17 +821,10 @@ impl<T: Io> Engine<T> {
                     self.abort(Failure::Local(LocalReason::Io));
                     return;
                 }
-                if !self.emit(&[ACK]) {
-                    return;
-                }
-                self.io.on_event(Event::Block);
-                self.arm(self.cfg.packet_ms(), now_ms);
+                self.emit_armed(&[ACK], self.cfg.packet_ms(), now_ms);
             }
             Action::Duplicate => {
-                if !self.emit(&[ACK]) {
-                    return;
-                }
-                self.arm(self.cfg.packet_ms(), now_ms);
+                self.emit_armed(&[ACK], self.cfg.packet_ms(), now_ms);
             }
             Action::Desync => self.abort(Failure::Wire(WireReason::OutOfSync)),
         }
@@ -935,14 +872,16 @@ impl<T: Io> Engine<T> {
 
     fn handle_control(&mut self, b: u8, now_ms: u32) {
         if matches!(self.session, Session::Complete) {
-            // A peer whose ACK of EOT was lost will resend EOT; ACK it again
-            // so they can finish. A sender whose EOT itself was lost (we
-            // already completed on retries) must still answer a late NAK/'C'
-            // with another EOT -- otherwise both sides burn the retry budget.
+            // After we have completed, answer only the frame whose meaning is
+            // unambiguous: a late EOT (our ACK was lost) gets another ACK, and
+            // `handle_late_packet` re-ACKs a late empty block 0. A NAK/'C'
+            // aimed at a completed SEND session is Forsberg figure 3's request
+            // for the NEXT batch file header -- the engine cannot know whether
+            // a next file follows, so it stays silent: the peer re-requests on
+            // its own timeout, and the next start_send() answers that one.
+            // (Answering EOT here would corrupt the batch handshake.)
             if b == EOT {
                 let _ = self.emit(&[ACK]);
-            } else if matches!(b, NAK | CRC) && self.common.was_send {
-                let _ = self.emit(&[EOT]);
             }
             return;
         }
@@ -1002,7 +941,7 @@ impl<T: Io> Engine<T> {
                 // graceful complete.
                 self.io.on_event(Event::FileComplete);
                 let req = self.common.check.request_byte();
-                if !self.emit(&[ACK, req]) {
+                if !self.emit_armed(&[ACK, req], self.cfg.response_ms(), now_ms) {
                     return;
                 }
                 {
@@ -1014,7 +953,6 @@ impl<T: Io> Engine<T> {
                     }
                     common.retries = 0;
                 }
-                self.arm(self.cfg.response_ms(), now_ms);
             }
             Action::Ignore => {}
         }
@@ -1025,8 +963,9 @@ impl<T: Io> Engine<T> {
             Ignore,
             /// Classic handshake: negotiate the check mode and send block 1.
             StartBlock(Check),
-            /// Header already fixed CRC-16; a NAK here can only mean "send
-            /// block 1" (the receiver's 'C' was lost), never a mode change.
+            /// The header already fixed CRC-16; a NAK or 'C' here can only
+            /// mean "send block 1" (the receiver's request was lost), never a
+            /// mode change.
             StartBlockCrc16,
             /// Send block 0 and wait for its ACK.
             StartHeader,
@@ -1042,11 +981,10 @@ impl<T: Io> Engine<T> {
                 return;
             };
             match s.phase {
-                SendPhase::Handshake if s.has_header && b == NAK => Action::StartBlockCrc16,
-                SendPhase::Handshake if s.has_header && b != CRC => Action::Ignore,
                 SendPhase::Handshake => {
                     Action::StartBlock(if b == CRC { Check::Crc16 } else { Check::Sum8 })
                 }
+                SendPhase::WaitSecondC => Action::StartBlockCrc16,
                 // Only 'C' requests block 0 (CRC-16 only).
                 SendPhase::HeaderHandshake if b == CRC => Action::StartHeader,
                 // NAK or 'C': the header (or its ACK) was lost. Some CRC
@@ -1066,28 +1004,27 @@ impl<T: Io> Engine<T> {
             }
             Action::StartBlockCrc16 => self.begin_transfer(now_ms),
             Action::StartHeader => {
-                self.resend_pending(now_ms);
-                let Self { session, .. } = self;
-                if let Session::Send(s) = session {
+                // The receiver's 'C' is both what first sends block 0 (nothing
+                // goes on the wire before it) and what re-sends it.
+                if let Session::Send(s) = &mut self.session {
                     s.phase = SendPhase::HeaderWaitAck;
                 }
+                self.emit_pending(now_ms);
             }
             Action::ResendHeader => {
                 // The receiver asking again means our header (or its ACK) was
                 // lost at a phase boundary -- answer with the same header.
-                self.resend_pending(now_ms);
+                self.emit_pending(now_ms);
             }
             Action::RetryBlock => {
                 // Peer NAKs the block we just sent: retransmit it.
-                self.retry_or_abort(now_ms, |e, n| e.resend_pending(n));
+                self.retry_or_abort(now_ms, |e, n| e.emit_pending(n));
             }
             Action::RetryEot => {
                 // Receivers commonly NAK the first EOT to make sure no data
                 // block is still in flight; resend the EOT.
                 self.retry_or_abort(now_ms, |e, n| {
-                    if e.emit(&[EOT]) {
-                        e.arm(e.cfg.response_ms(), n);
-                    }
+                    e.emit_armed(&[EOT], e.cfg.response_ms(), n);
                 });
             }
         }
@@ -1101,7 +1038,6 @@ impl<T: Io> Engine<T> {
             };
             s.phase = SendPhase::WaitAck;
         }
-        self.io.on_event(Event::Handshake);
         self.send_next_block_or_eot(now_ms);
     }
 
@@ -1119,7 +1055,9 @@ impl<T: Io> Engine<T> {
             };
             match s.phase {
                 SendPhase::WaitAck => Action::NextBlock,
-                SendPhase::HeaderWaitAck if s.file_name_len == 0 => Action::EmptyHeaderDone,
+                // pending[3] is the first byte of the block-0 name: NUL means
+                // the empty batch terminator, a real name byte means a file.
+                SendPhase::HeaderWaitAck if s.pending[3] == 0 => Action::EmptyHeaderDone,
                 SendPhase::HeaderWaitAck => Action::WaitSecondC,
                 SendPhase::WaitEotAck => Action::Complete,
                 _ => Action::Ignore,
@@ -1133,11 +1071,10 @@ impl<T: Io> Engine<T> {
                         return;
                     };
                     // The peer accepted this block; the next one gets the next
-                    // sequence number. A NAK goes through `resend_pending`
+                    // sequence number. A NAK goes through `emit_pending`
                     // and deliberately does NOT bump it.
                     s.blk = s.blk.wrapping_add(1);
                 }
-                self.io.on_event(Event::Block);
                 self.send_next_block_or_eot(now_ms);
             }
             Action::EmptyHeaderDone | Action::Complete => self.finish_complete(),
@@ -1145,11 +1082,8 @@ impl<T: Io> Engine<T> {
                 // Header accepted. The receiver now asks for block 1 with a
                 // fresh 'C'; wait for it like a classic handshake.
                 self.common.retries = 0;
-                {
-                    let Session::Send(s) = &mut self.session else {
-                        return;
-                    };
-                    s.phase = SendPhase::Handshake;
+                if let Session::Send(s) = &mut self.session {
+                    s.phase = SendPhase::WaitSecondC;
                 }
                 self.arm(self.cfg.response_ms(), now_ms);
             }
@@ -1217,7 +1151,7 @@ impl<T: Io> Engine<T> {
                 RecvPhase::Data => Action::RetryNak,
             },
             Session::Send(s) => match s.phase {
-                SendPhase::HeaderHandshake | SendPhase::Handshake => {
+                SendPhase::HeaderHandshake | SendPhase::Handshake | SendPhase::WaitSecondC => {
                     if s.started {
                         // Just re-arm: the receiver re-requests on its own
                         // timeout; sending anything unsolicited would race it.
@@ -1252,19 +1186,16 @@ impl<T: Io> Engine<T> {
             }),
             Action::EndRequest => {
                 self.common.retries += 1;
-                if self.emit(&[self.common.check.request_byte()]) {
-                    self.arm(self.cfg.response_ms(), now_ms);
-                }
+                let req = self.common.check.request_byte();
+                self.emit_armed(&[req], self.cfg.response_ms(), now_ms);
             }
             Action::Complete => self.finish_complete(),
             Action::RetryNak => self.retry_or_abort(now_ms, |e, n| {
-                if e.emit(&[NAK]) {
-                    e.arm(e.cfg.packet_ms(), n);
-                }
+                e.emit_armed(&[NAK], e.cfg.packet_ms(), n);
             }),
             Action::WaitAgain => self.retry_or_abort(now_ms, |e, n| e.arm(e.cfg.response_ms(), n)),
             Action::AbortNoResponse => self.abort(Failure::Wire(WireReason::NoResponse)),
-            Action::ResendBlock => self.retry_or_abort(now_ms, |e, n| e.resend_pending(n)),
+            Action::ResendBlock => self.retry_or_abort(now_ms, |e, n| e.emit_pending(n)),
             Action::ResendEot => {
                 if self.common.retries >= self.cfg.max_retries {
                     // All data blocks were ACKed; the receiver has likely
@@ -1272,9 +1203,7 @@ impl<T: Io> Engine<T> {
                     self.finish_complete();
                 } else {
                     self.retry_or_abort(now_ms, |e, n| {
-                        if e.emit(&[EOT]) {
-                            e.arm(e.cfg.response_ms(), n);
-                        }
+                        e.emit_armed(&[EOT], e.cfg.response_ms(), n);
                     });
                 }
             }
@@ -1340,49 +1269,27 @@ impl<T: Io> Engine<T> {
                 self.abort(Failure::Local(LocalReason::Io));
             }
             Produced::Eot => {
-                let response_timeout = self.cfg.response_ms();
-                let emit_err = {
-                    let Self {
-                        io,
-                        common,
-                        session,
-                        ..
-                    } = self;
-                    let Session::Send(s) = session else {
-                        return;
-                    };
+                if let Session::Send(s) = &mut self.session {
                     s.phase = SendPhase::WaitEotAck;
-                    common.arm(response_timeout, now_ms);
-                    io.emit(&[EOT]).is_err()
-                };
-                if emit_err {
-                    self.abort(Failure::Local(LocalReason::Io));
                 }
+                self.emit_armed(&[EOT], self.cfg.response_ms(), now_ms);
             }
             Produced::Block(n, block_len) => {
-                let response_timeout = self.cfg.response_ms();
-                let emit_err = {
-                    let Self {
-                        io,
-                        common,
-                        session,
-                        ..
-                    } = self;
-                    let Session::Send(s) = session else {
+                let check = self.common.check;
+                let start = if block_len == BLOCK_1024 { STX } else { SOH };
+                {
+                    let Session::Send(s) = &mut self.session else {
                         return;
                     };
-                    let start = if block_len == BLOCK_1024 { STX } else { SOH };
                     for b in s.pending[3 + n..3 + block_len].iter_mut() {
                         *b = SUB
                     }
-                    let total = packet_len(start, common.check);
                     s.pending[0] = start;
                     s.pending[1] = s.blk;
                     s.pending[2] = !s.blk;
-                    match common.check {
+                    match check {
                         Check::Sum8 => {
-                            let sum = frame::sum8(&s.pending[3..3 + block_len]);
-                            s.pending[3 + block_len] = sum;
+                            s.pending[3 + block_len] = frame::sum8(&s.pending[3..3 + block_len]);
                         }
                         Check::Crc16 => {
                             let crc = frame::crc16(&s.pending[3..3 + block_len]);
@@ -1390,21 +1297,20 @@ impl<T: Io> Engine<T> {
                             s.pending[4 + block_len] = crc as u8;
                         }
                     }
-                    s.pending_len = total;
+                    s.pending_len = packet_len(start, check);
                     s.phase = SendPhase::WaitAck;
-                    common.arm(response_timeout, now_ms);
-                    io.emit(&s.pending[..total]).is_err()
-                };
-                if emit_err {
-                    self.abort(Failure::Local(LocalReason::Io));
                 }
+                self.emit_pending(now_ms);
             }
         }
     }
 
-    fn resend_pending(&mut self, now_ms: u32) {
-        let response_timeout = self.cfg.response_ms();
-        let emit_err = {
+    /// Send the packet held in `pending` — block 0, a data block, or its
+    /// retransmission — and arm the response timer. The caller has filled
+    /// `pending`/`pending_len` and set the phase. Aborts on I/O failure.
+    fn emit_pending(&mut self, now_ms: u32) {
+        let timeout_ms = self.cfg.response_ms();
+        let failed = {
             let Self {
                 io,
                 common,
@@ -1417,13 +1323,13 @@ impl<T: Io> Engine<T> {
             if s.pending_len == 0 {
                 return;
             }
-            let err = io.emit(&s.pending[..s.pending_len]).is_err();
-            if !err {
-                common.arm(response_timeout, now_ms);
+            let failed = io.emit(&s.pending[..s.pending_len]).is_err();
+            if !failed {
+                common.arm(timeout_ms, now_ms);
             }
-            err
+            failed
         };
-        if emit_err {
+        if failed {
             self.abort(Failure::Local(LocalReason::Io));
         }
     }
@@ -1636,36 +1542,6 @@ mod tests {
         e.start_recv(0).unwrap();
         assert_eq!(e.status(), Status::Handshake);
         assert_eq!(e.io().take(), vec![CRC]);
-    }
-
-    #[test]
-    fn fail_io_reports_io_error_and_emits_can() {
-        let mut e = recv_engine(CheckMode::Crc16);
-        e.io().take();
-        e.fail_io();
-        assert_eq!(e.status(), Status::Failed(Failure::Local(LocalReason::Io)));
-        assert_eq!(e.io().take(), vec![CAN, CAN]);
-        assert!(e
-            .io()
-            .events
-            .contains(&Event::Failed(Failure::Local(LocalReason::Io))));
-        // Idempotent: a second report must not re-emit CAN / re-fire the event.
-        e.fail_io();
-        assert!(e.io().take().is_empty());
-        assert_eq!(e.io().events.len(), 1);
-    }
-
-    #[test]
-    fn fail_io_overrides_a_late_complete() {
-        let mut e = recv_engine(CheckMode::Crc16);
-        e.io().take();
-        e.on_receive(&[EOT], 0); // empty transfer completes
-        assert_eq!(e.status(), Status::Complete);
-        e.io().take();
-        // The final ACK could not be sent: do not report success.
-        e.fail_io();
-        assert_eq!(e.status(), Status::Failed(Failure::Local(LocalReason::Io)));
-        assert_eq!(e.io().take(), vec![CAN, CAN]);
     }
 
     #[test]
@@ -2337,12 +2213,11 @@ mod tests {
     }
 
     /// Starting on top of an in-flight session used to silently abandon it.
-    /// It is now a machine-checked error, discoverable via `can_start()`.
+    /// It is now a machine-checked error; the in-flight session is untouched.
     #[test]
     fn start_while_active_is_busy_not_a_silent_reset() {
         let mut e = recv_engine(CheckMode::Crc16);
         e.io().take();
-        assert!(!e.can_start());
         assert_eq!(e.start_recv(1), Err(StartError::Busy));
         assert_eq!(e.start_send(SessionKind::Classic, 1), Err(StartError::Busy));
         // The in-flight session is untouched: still waiting for block 1.
@@ -2352,7 +2227,6 @@ mod tests {
         // Once it finishes, a new session is allowed again.
         e.on_receive(&[EOT], 2); // empty transfer: ACK + Complete
         assert_eq!(e.status(), Status::Complete);
-        assert!(e.can_start());
         e.io().take(); // drain the empty transfer's ACK
         assert_eq!(e.start_recv(3), Ok(()));
         assert_eq!(e.io().take(), vec![CRC]);
@@ -2444,8 +2318,14 @@ mod tests {
         assert_eq!(again, header);
     }
 
+    /// A request byte that lands after the sender session already completed
+    /// is left unanswered. In a YMODEM batch that `'C'` is Forsberg figure 3's
+    /// request for the NEXT file header (the receiver sends it immediately
+    /// after ACKing EOT, before the application can start the next session),
+    /// and an EOT answer would corrupt the batch. The peer re-requests on its
+    /// own timeout; the next start_send() answers that fresh request.
     #[test]
-    fn sender_late_nak_after_eot_complete_resends_eot() {
+    fn request_byte_after_sender_complete_is_ignored() {
         let cfg = Config {
             max_retries: 2,
             response_timeout_ms: nz(100),
@@ -2463,7 +2343,8 @@ mod tests {
         assert_eq!(e.status(), Status::Complete);
         e.io().take(); // drain EOT retries from the timeout path
         e.on_receive(&[NAK], 400);
-        assert_eq!(e.io().take(), vec![EOT]);
+        e.on_receive(&[CRC], 401);
+        assert_eq!(e.io().take(), vec![]);
         assert_eq!(e.status(), Status::Complete);
     }
 

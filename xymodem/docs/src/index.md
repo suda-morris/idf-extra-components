@@ -193,15 +193,42 @@ if (st == XYMODEM_ST_COMPLETE) {
 | [`XYMODEM_ST_COMPLETE`](api.md#enum-xymodem_status_t) | This session (or YMODEM batch) finished |
 | [`XYMODEM_ST_FAILED`](api.md#enum-xymodem_status_t) | See [`xymodem_error()`](api.md#function-xymodem_error) |
 
-Optional events, if you registered `on_event`:
+Optional events, if you registered `on_event`. The list is deliberately
+short: every event is something you **cannot** observe through your own
+callbacks — block arrivals are exactly your `data_sink` calls, payload pulls
+are exactly your `data_source` calls, and a block-0 header is `on_file`.
 
 | Event | When |
 |---|---|
-| [`XYMODEM_EV_HANDSHAKE`](api.md#enum-xymodem_event_t) | Classic receive: first data packet. Sender: the peer's request was accepted and data starts. A YMODEM receiver uses `on_file` for the corresponding moment. |
-| [`XYMODEM_EV_BLOCK`](api.md#enum-xymodem_event_t) | One data block accepted or acknowledged |
 | [`XYMODEM_EV_FILE_COMPLETE`](api.md#enum-xymodem_event_t) | One YMODEM file ended; the batch may continue |
 | [`XYMODEM_EV_COMPLETE`](api.md#enum-xymodem_event_t) | The session / batch is done |
 | [`XYMODEM_EV_FAILED`](api.md#enum-xymodem_event_t) | `arg` is the `XYMODEM_ERR_*` code |
+
+### Recipe: a progress bar
+
+Progress is not an API — it is a counter in the callback you already wrote:
+
+```c
+/* receiver: bytes landed so far; on_file restarts the count per file */
+static esp_err_t store(xymodem_handle_t h, void *ctx, const uint8_t *d, size_t len)
+{
+    app->received += len;                      /* progress */
+    app->percent = 100 * app->received / app->size;  /* size from on_file */
+    return store_to_flash(d, len);
+}
+
+/* sender: bytes handed to the engine */
+static esp_err_t load(xymodem_handle_t h, void *ctx, uint8_t *buf, size_t len, size_t *read_len)
+{
+    size_t n = read_from_source(buf, len);
+    *read_len = n;
+    app->sent += n;                            /* progress */
+    return ESP_OK;
+}
+```
+
+No duplicates reach the callbacks (the engine ACKs them but does not deliver
+them twice), so the counters are exact.
 
 A session already in flight is not silently replaced:
 `xymodem_start_recv()` / `xymodem_start_send()` return
@@ -245,7 +272,9 @@ sender should wait for it.
 The full receive-then-echo demo is
 [`examples/xymodem_event`](../../examples/xymodem_event). It is the same
 firmware for both protocols: the host tool decides whether to send a
-header.
+header. For a real deployment — firmware updates streamed through UHCI
+(UART DMA) with a sha256-verified boot switch — see
+[`examples/xymodem_ota`](../../examples/xymodem_ota).
 
 ## Next
 

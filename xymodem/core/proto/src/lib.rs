@@ -26,5 +26,5 @@ pub(crate) mod test_support;
 pub use frame::Check;
 pub use io::{Event, Failure, Io, IoError, LocalReason, WireReason};
 pub use modem::{
-    CheckMode, Config, Engine, FileMeta, InvalidName, Role, SessionKind, StartError, Status,
+    CheckMode, Config, Engine, FileMeta, InvalidName, SessionKind, StartError, Status,
 };

@@ -34,7 +34,6 @@
 |  esp\_err\_t | [**xymodem\_new**](#function-xymodem_new) (const [**xymodem\_config\_t**](#struct-xymodem_config_t) \*config, [**xymodem\_handle\_t**](#typedef-xymodem_handle_t) \*out\_handle) <br>_Create a driver instance. The handle is reusable for many transfers._ |
 |  esp\_err\_t | [**xymodem\_on\_receive**](#function-xymodem_on_receive) ([**xymodem\_handle\_t**](#typedef-xymodem_handle_t) handle, const uint8\_t \*data, size\_t len) <br>_Feed bytes received from the hardware into the protocol state machine._ |
 |  esp\_err\_t | [**xymodem\_poll**](#function-xymodem_poll) ([**xymodem\_handle\_t**](#typedef-xymodem_handle_t) handle) <br>_Drive the protocol state machine (timeouts, retransmits)._ |
-|  [**xymodem\_role\_t**](#enum-xymodem_role_t) | [**xymodem\_role**](#function-xymodem_role) ([**xymodem\_handle\_t**](#typedef-xymodem_handle_t) handle) <br>_Current role: XYMODEM\_ROLE\_RECV, XYMODEM\_ROLE\_SEND, or XYMODEM\_ROLE\_NONE when idle, terminal, or the handle is not live._ |
 |  esp\_err\_t | [**xymodem\_start\_recv**](#function-xymodem_start_recv) ([**xymodem\_handle\_t**](#typedef-xymodem_handle_t) handle) <br>_Start a session as the receiving side._ |
 |  esp\_err\_t | [**xymodem\_start\_send**](#function-xymodem_start_send) ([**xymodem\_handle\_t**](#typedef-xymodem_handle_t) handle, const [**xymodem\_file\_info\_t**](#struct-xymodem_file_info_t) \*file) <br>_Start a session as the sending side._ |
 |  [**xymodem\_status\_t**](#enum-xymodem_status_t) | [**xymodem\_status**](#function-xymodem_status) ([**xymodem\_handle\_t**](#typedef-xymodem_handle_t) handle) <br>_Current transfer status (XYMODEM\_ST\_\*)._ |
@@ -170,7 +169,7 @@ typedef void(*) xymodem_event_fn_t(xymodem_handle_t handle, void *ctx, xymodem_e
 
 * `handle` The instance (`this`) reporting the event.
 * `ctx` User context from [**xymodem\_config\_t::user\_ctx**](#variable-user_ctx).
-* `event` One of XYMODEM\_EV\_\*. XYMODEM\_EV\_HANDSHAKE fires on a classic receiver's first data block, and on a sender when the peer's request is accepted and payload starts. A YMODEM receiver uses on\_file for that moment instead. XYMODEM\_EV\_FILE\_COMPLETE fires at each YMODEM file EOT (the session stays open for the next header); XYMODEM\_EV\_COMPLETE still marks the whole batch / classic transfer. 
+* `event` One of XYMODEM\_EV\_\*. XYMODEM\_EV\_FILE\_COMPLETE fires at each YMODEM file EOT (the session stays open for the next header); XYMODEM\_EV\_COMPLETE marks the whole batch / classic transfer; XYMODEM\_EV\_FAILED carries the reason in `arg`. 
 * `arg` On XYMODEM\_EV\_FAILED, a negative XYMODEM\_ERR\_\* code; 0 otherwise.
 ### struct `xymodem_file_info_t`
 
@@ -337,15 +336,6 @@ Call from the same loop that reads the UART (the read timeout _is_ the poll peri
 **Returns:**
 
 ESP\_OK, or ESP\_ERR\_INVALID\_ARG for a NULL handle.
-### function `xymodem_role`
-
-_Current role: XYMODEM\_ROLE\_RECV, XYMODEM\_ROLE\_SEND, or XYMODEM\_ROLE\_NONE when idle, terminal, or the handle is not live._
-```c
-xymodem_role_t xymodem_role (
-    xymodem_handle_t handle
-) 
-```
-
 ### function `xymodem_start_recv`
 
 _Start a session as the receiving side._
@@ -472,8 +462,6 @@ Default [**xymodem\_config\_t::rx\_buf\_size**](#variable-rx_buf_size) when that
 | typedef int32\_t | [**xymodem\_err\_t**](#typedef-xymodem_err_t)  <br> |
 | enum  | [**xymodem\_event\_t**](#enum-xymodem_event_t)  <br> |
 | typedef uint32\_t | [**xymodem\_event\_t**](#typedef-xymodem_event_t)  <br> |
-| enum  | [**xymodem\_role\_t**](#enum-xymodem_role_t)  <br> |
-| typedef int32\_t | [**xymodem\_role\_t**](#typedef-xymodem_role_t)  <br> |
 | enum  | [**xymodem\_status\_t**](#enum-xymodem_status_t)  <br> |
 | typedef int32\_t | [**xymodem\_status\_t**](#typedef-xymodem_status_t)  <br> |
 
@@ -483,21 +471,18 @@ Default [**xymodem\_config\_t::rx\_buf\_size**](#variable-rx_buf_size) when that
 | ---: | :--- |
 |  [**xymodem\_err\_t**](#enum-xymodem_err_t) | [**xymodem\_core\_cancel**](#function-xymodem_core_cancel) (struct [**xymodem\_core\_t**](#struct-xymodem_core_t) \*core) <br> |
 |  [**xymodem\_err\_t**](#enum-xymodem_err_t) | [**xymodem\_core\_error**](#function-xymodem_core_error) (const struct [**xymodem\_core\_t**](#struct-xymodem_core_t) \*core) <br> |
-|  [**xymodem\_err\_t**](#enum-xymodem_err_t) | [**xymodem\_core\_fail\_io**](#function-xymodem_core_fail_io) (struct [**xymodem\_core\_t**](#struct-xymodem_core_t) \*core) <br> |
 |  [**xymodem\_err\_t**](#enum-xymodem_err_t) | [**xymodem\_core\_init**](#function-xymodem_core_init) (struct [**xymodem\_core\_t**](#struct-xymodem_core_t) \*core, const struct [**xymodem\_core\_config\_t**](#struct-xymodem_core_config_t) \*config, const struct [**xymodem\_core\_io\_t**](#struct-xymodem_core_io_t) \*io) <br> |
 |  [**xymodem\_err\_t**](#enum-xymodem_err_t) | [**xymodem\_core\_on\_receive**](#function-xymodem_core_on_receive) (struct [**xymodem\_core\_t**](#struct-xymodem_core_t) \*core, const uint8\_t \*data, size\_t len, uint32\_t now\_ms) <br> |
 |  [**xymodem\_err\_t**](#enum-xymodem_err_t) | [**xymodem\_core\_poll**](#function-xymodem_core_poll) (struct [**xymodem\_core\_t**](#struct-xymodem_core_t) \*core, uint32\_t now\_ms) <br> |
-|  [**xymodem\_role\_t**](#enum-xymodem_role_t) | [**xymodem\_core\_role**](#function-xymodem_core_role) (const struct [**xymodem\_core\_t**](#struct-xymodem_core_t) \*core) <br> |
 |  [**xymodem\_err\_t**](#enum-xymodem_err_t) | [**xymodem\_core\_start\_recv**](#function-xymodem_core_start_recv) (struct [**xymodem\_core\_t**](#struct-xymodem_core_t) \*core, uint32\_t now\_ms) <br> |
 |  [**xymodem\_err\_t**](#enum-xymodem_err_t) | [**xymodem\_core\_start\_send**](#function-xymodem_core_start_send) (struct [**xymodem\_core\_t**](#struct-xymodem_core_t) \*core, const struct [**xymodem\_core\_file\_info\_t**](#struct-xymodem_core_file_info_t) \*file, uint32\_t now\_ms) <br> |
-|  size\_t | [**xymodem\_core\_state\_size**](#function-xymodem_core_state_size) (void) <br> |
 |  [**xymodem\_status\_t**](#enum-xymodem_status_t) | [**xymodem\_core\_status**](#function-xymodem_core_status) (const struct [**xymodem\_core\_t**](#struct-xymodem_core_t) \*core) <br> |
 
 ## Macros
 
 | Type | Name |
 | ---: | :--- |
-| define  | [**XYMODEM\_CORE\_STATE\_WORDS**](#define-xymodem_core_state_words)  320<br> |
+| define  | [**XYMODEM\_CORE\_STATE\_WORDS**](#define-xymodem_core_state_words)  280<br> |
 
 ## Structures and Types Documentation
 
@@ -616,8 +601,6 @@ typedef int32_t xymodem_err_t;
 
 ```c
 enum xymodem_event_t {
-    XYMODEM_EV_HANDSHAKE = 1,
-    XYMODEM_EV_BLOCK = 2,
     XYMODEM_EV_COMPLETE = 3,
     XYMODEM_EV_FAILED = 4,
     XYMODEM_EV_FILE_COMPLETE = 5
@@ -628,22 +611,6 @@ enum xymodem_event_t {
 
 ```c
 typedef uint32_t xymodem_event_t;
-```
-
-### enum `xymodem_role_t`
-
-```c
-enum xymodem_role_t {
-    XYMODEM_ROLE_NONE = 0,
-    XYMODEM_ROLE_RECV = 1,
-    XYMODEM_ROLE_SEND = 2
-};
-```
-
-### typedef `xymodem_role_t`
-
-```c
-typedef int32_t xymodem_role_t;
 ```
 
 ### enum `xymodem_status_t`
@@ -684,14 +651,6 @@ xymodem_err_t xymodem_core_error (
 ) 
 ```
 
-### function `xymodem_core_fail_io`
-
-```c
-xymodem_err_t xymodem_core_fail_io (
-    struct xymodem_core_t *core
-) 
-```
-
 ### function `xymodem_core_init`
 
 ```c
@@ -722,14 +681,6 @@ xymodem_err_t xymodem_core_poll (
 ) 
 ```
 
-### function `xymodem_core_role`
-
-```c
-xymodem_role_t xymodem_core_role (
-    const struct xymodem_core_t *core
-) 
-```
-
 ### function `xymodem_core_start_recv`
 
 ```c
@@ -749,14 +700,6 @@ xymodem_err_t xymodem_core_start_send (
 ) 
 ```
 
-### function `xymodem_core_state_size`
-
-```c
-size_t xymodem_core_state_size (
-    void
-) 
-```
-
 ### function `xymodem_core_status`
 
 ```c
@@ -771,7 +714,7 @@ xymodem_status_t xymodem_core_status (
 ### define `XYMODEM_CORE_STATE_WORDS`
 
 ```c
-#define XYMODEM_CORE_STATE_WORDS 320
+#define XYMODEM_CORE_STATE_WORDS 280
 ```
 
 

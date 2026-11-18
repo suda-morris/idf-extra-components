@@ -152,8 +152,8 @@ cfg.core.check_mode = XYMODEM_CHECK_AUTO;   /* default: 3 × 'C', then NAK */
 The sender waits. It emits nothing until it sees NAK or `'C'`. That wait
 is [`xymodem_start_send(handle, NULL)`](api.md#function-xymodem_start_send)
 — the `NULL` is "no block 0, this is classic XMODEM". As soon as the
-request byte arrives, [`XYMODEM_EV_HANDSHAKE`](api.md#enum-xymodem_event_t)
-fires and the first data packet goes out.
+request byte arrives, your [`data_source`](api.md#typedef-xymodem_data_source_fn_t)
+is called for the first payload chunk and the first data packet goes out.
 
 ## The data loop
 
@@ -354,8 +354,8 @@ cfg.core.block_1k = true;
 
 When the remaining payload is at most 128 bytes, this component emits a
 final SOH/128 packet rather than a 1024-byte packet full of SUB. That is
-the mixed sizing in Forsberg's XMODEM-1K figures, and it is what `sx -k`
-does. The receiver does not need to be told.
+the mixed sizing Forsberg's reference shows in figure 2 ("Mixed 1024 and
+128 byte Packets"). The receiver does not need to be told.
 
 CRC-16 should be used with 1K packets. `XYMODEM_CHECK_AUTO` already
 prefers CRC. A checksum-only peer is still accepted; the sender follows

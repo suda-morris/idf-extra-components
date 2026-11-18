@@ -17,9 +17,7 @@
 use core::ffi::{c_char, c_int, c_void};
 use core::num::NonZeroU32;
 use xymodem_proto::io::{Event, Failure, Io, IoError, LocalReason, WireReason};
-use xymodem_proto::modem::{
-    CheckMode, Config, Engine, FileMeta, Role, SessionKind, StartError, Status,
-};
+use xymodem_proto::modem::{CheckMode, Config, Engine, FileMeta, SessionKind, StartError, Status};
 
 // A staticlib is the final artifact on bare metal: it must provide the panic
 // handler (the `proto` rlib deliberately does not). `loop {}` here would hang
@@ -105,15 +103,12 @@ pub enum XymodemStatus {
     XYMODEM_ST_INVALID = 5,
 }
 
-/// Lifecycle events delivered through `on_event`. 1-based so 0 can serve as a
-/// "no event" sentinel in C.
+/// Lifecycle events delivered through `on_event`. Gaps in the numbering are
+/// deleted events (handshake, per-block) whose information the application
+/// derives from its own data_sink / data_source / on_file callbacks.
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum XymodemEvent {
-    /// Handshake negotiated. `arg` is unused (XYMODEM_OK).
-    XYMODEM_EV_HANDSHAKE = 1,
-    /// A block was accepted (receiver) or acknowledged (sender). `arg` = XYMODEM_OK.
-    XYMODEM_EV_BLOCK = 2,
     /// Transfer completed. `arg` = XYMODEM_OK.
     XYMODEM_EV_COMPLETE = 3,
     /// Transfer failed. `arg` carries a negative XYMODEM_ERR_* code.
@@ -123,27 +118,14 @@ pub enum XymodemEvent {
     XYMODEM_EV_FILE_COMPLETE = 5,
 }
 
-/// Which side of the wire the engine is currently playing. XYMODEM_ROLE_NONE
-/// when idle or terminal: after Complete the application chooses the next
-/// `start_*`.
-#[repr(i32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum XymodemRole {
-    /// Idle, complete, failed, or a NULL pointer.
-    XYMODEM_ROLE_NONE = 0,
-    /// A receive session is in flight.
-    XYMODEM_ROLE_RECV = 1,
-    /// A send session is in flight.
-    XYMODEM_ROLE_SEND = 2,
-}
-
-/// Number of `uint64_t` words in `xymodem_core_t::_storage`. 320 words = 2560
-/// bytes. Measured `Engine<CIo>` is 2312 B on a 64-bit host and 2272 B on
-/// riscv32imc, so this leaves ~250 B of headroom and saves 1.5 KiB of RAM per
-/// handle versus the original 512 words. The static assertions below turn any
-/// future growth into a build error, so the headroom is convenience, not a
-/// safety net. Exported as a C #define so the struct's array size resolves.
-pub const XYMODEM_CORE_STATE_WORDS: usize = 320;
+/// Number of `uint64_t` words in `xymodem_core_t::_storage`. 280 words = 2240
+/// bytes. Measured `Engine<CIo>` is 2168 B on a 64-bit host and 2128 B on
+/// riscv32imc, so this leaves ~70 B of headroom on the larger variant and
+/// saves ~1.8 KiB of RAM per handle versus the original 512 words. The static
+/// assertions below turn any future growth into a build error, so the
+/// headroom is convenience, not a safety net. Exported as a C #define so the
+/// struct's array size resolves.
+pub const XYMODEM_CORE_STATE_WORDS: usize = 280;
 
 // ---------------------------------------------------------------------------
 // C-facing data types
@@ -201,7 +183,10 @@ pub struct XymodemCoreIo {
         extern "C" fn(user: *mut c_void, name: *const c_char, size: u64, has_size: bool) -> bool,
     >,
     /// Optional lifecycle notification. `event` is an XYMODEM_EV_* value; on
-    /// XYMODEM_EV_FAILED, `arg` is a negative XYMODEM_ERR_* code.
+    /// XYMODEM_EV_FAILED, `arg` is a negative XYMODEM_ERR_* code. Progress
+    /// is not an event parameter: count the bytes in your own data_sink /
+    /// data_source callbacks (they fire exactly once per accepted/pulled
+    /// chunk) and reset the counter in on_file for per-file progress.
     pub on_event: Option<extern "C" fn(user: *mut c_void, event: XymodemEvent, arg: XymodemErr)>,
     /// Opaque user pointer passed back to every callback.
     pub user: *mut c_void,
@@ -298,8 +283,6 @@ impl Io for CIo {
     fn on_event(&mut self, event: Event) {
         if let Some(cb) = self.io.on_event {
             let (code, arg) = match event {
-                Event::Handshake => (XymodemEvent::XYMODEM_EV_HANDSHAKE, XymodemErr::XYMODEM_OK),
-                Event::Block => (XymodemEvent::XYMODEM_EV_BLOCK, XymodemErr::XYMODEM_OK),
                 Event::FileComplete => (
                     XymodemEvent::XYMODEM_EV_FILE_COMPLETE,
                     XymodemErr::XYMODEM_OK,
@@ -347,14 +330,6 @@ fn error_code(s: Status) -> XymodemErr {
     match s {
         Status::Failed(f) => failure_code(f),
         _ => XymodemErr::XYMODEM_OK,
-    }
-}
-
-fn role_code(r: Role) -> XymodemRole {
-    match r {
-        Role::None => XymodemRole::XYMODEM_ROLE_NONE,
-        Role::Recv => XymodemRole::XYMODEM_ROLE_RECV,
-        Role::Send => XymodemRole::XYMODEM_ROLE_SEND,
     }
 }
 
@@ -452,21 +427,14 @@ fn engine_ptr_const(core: *const XymodemCore) -> Option<*const Engine<CIo>> {
 // Exported C API
 // ---------------------------------------------------------------------------
 
-/// Return `sizeof(xymodem_core_t)` in bytes. Useful when allocating the state
-/// dynamically; a stack/static `xymodem_core_t` needs none of this.
-#[no_mangle]
-pub extern "C" fn xymodem_core_state_size() -> usize {
-    core::mem::size_of::<XymodemCore>()
-}
-
 /// Initialize an idle engine. No session runs yet: nothing is emitted, no
 /// timer is armed, received bytes are ignored. Call
 /// `xymodem_core_start_recv()` or `xymodem_core_start_send()` to open one.
 ///
 /// Returns XYMODEM_OK, or XYMODEM_ERR_INVALID_ARG on a NULL pointer, an
-/// invalid config, or a callback table without `emit`. The buffer must be at
-/// least `xymodem_core_state_size()` bytes and 8-byte aligned; it is left
-/// untouched on error.
+/// invalid config, or a callback table without `emit`. The buffer is a
+/// `xymodem_core_t` (whose size is visible in this header) and must be
+/// 8-byte aligned; it is left untouched on error.
 ///
 /// # Safety
 /// `core` must point to writable, 8-aligned memory of `sizeof(xymodem_core_t)`
@@ -667,21 +635,6 @@ pub unsafe extern "C" fn xymodem_core_status(core: *const XymodemCore) -> Xymode
     status_code(e.status())
 }
 
-/// Current role: XYMODEM_ROLE_RECV, XYMODEM_ROLE_SEND, or XYMODEM_ROLE_NONE
-/// when idle / terminal / NULL.
-///
-/// # Safety
-/// `core` must be initialized.
-#[no_mangle]
-pub unsafe extern "C" fn xymodem_core_role(core: *const XymodemCore) -> XymodemRole {
-    let Some(p) = engine_ptr_const(core) else {
-        return XymodemRole::XYMODEM_ROLE_NONE;
-    };
-    // SAFETY: `core` was initialized and is non-null; shared, read-only use.
-    let e = unsafe { &*p };
-    role_code(e.role())
-}
-
 /// The failure reason (a negative XYMODEM_ERR_* code) when status is
 /// XYMODEM_ST_FAILED; XYMODEM_OK otherwise. Returns XYMODEM_ERR_INVALID_ARG
 /// for a NULL pointer.
@@ -715,30 +668,6 @@ pub unsafe extern "C" fn xymodem_core_cancel(core: *mut XymodemCore) -> XymodemE
     // SAFETY: `core` was initialized and is non-null.
     let e = unsafe { &mut *p };
     e.cancel();
-    XymodemErr::XYMODEM_OK
-}
-
-/// Report that an I/O callback (emit/data_sink/data_source) failed. Aborts the
-/// transfer with XYMODEM_ERR_IO, emitting CAN and reporting the SAME code
-/// through on_event and xymodem_core_error. A no-op when idle or already
-/// failed.
-///
-/// For C embedders of this ABI that detect a late failure *outside* a
-/// callback. The IDF wrapper does not call this: fallible `Io` already
-/// aborts inside emit / data_sink / data_source.
-///
-/// Returns XYMODEM_OK, or XYMODEM_ERR_INVALID_ARG for a NULL pointer.
-///
-/// # Safety
-/// `core` must be initialized.
-#[no_mangle]
-pub unsafe extern "C" fn xymodem_core_fail_io(core: *mut XymodemCore) -> XymodemErr {
-    let Some(p) = engine_ptr(core) else {
-        return XymodemErr::XYMODEM_ERR_INVALID_ARG;
-    };
-    // SAFETY: `core` was initialized and is non-null.
-    let e = unsafe { &mut *p };
-    e.fail_io();
     XymodemErr::XYMODEM_OK
 }
 
@@ -801,10 +730,6 @@ mod tests {
                 XymodemStatus::XYMODEM_ST_INVALID
             );
             assert_eq!(
-                xymodem_core_role(ptr::null()),
-                XymodemRole::XYMODEM_ROLE_NONE
-            );
-            assert_eq!(
                 xymodem_core_error(ptr::null()),
                 XymodemErr::XYMODEM_ERR_INVALID_ARG
             );
@@ -845,13 +770,11 @@ mod tests {
         // SAFETY: `core` was initialized; file names are C string literals.
         unsafe {
             assert_eq!(xymodem_core_status(&core), XymodemStatus::XYMODEM_ST_IDLE);
-            assert_eq!(xymodem_core_role(&core), XymodemRole::XYMODEM_ROLE_NONE);
 
             assert_eq!(
                 xymodem_core_start_send(&mut core, ptr::null(), 0),
                 XymodemErr::XYMODEM_OK
             );
-            assert_eq!(xymodem_core_role(&core), XymodemRole::XYMODEM_ROLE_SEND);
             assert_eq!(
                 xymodem_core_status(&core),
                 XymodemStatus::XYMODEM_ST_HANDSHAKE
@@ -862,7 +785,6 @@ mod tests {
             );
 
             xymodem_core_cancel(&mut core);
-            assert_eq!(xymodem_core_role(&core), XymodemRole::XYMODEM_ROLE_NONE);
 
             let name = c"a.bin";
             let file = XymodemFileInfo {
@@ -900,7 +822,6 @@ mod tests {
                 xymodem_core_start_recv(&mut core, 0),
                 XymodemErr::XYMODEM_OK
             );
-            assert_eq!(xymodem_core_role(&core), XymodemRole::XYMODEM_ROLE_RECV);
         }
     }
 }

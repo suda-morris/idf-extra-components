@@ -181,7 +181,9 @@ static esp_err_t IRAM_ATTR rx_ingest(struct xymodem_dev_t *dev, const uint8_t *d
 {
     portENTER_CRITICAL_SAFE(&dev->rx_mux);
     esp_err_t err = ESP_OK;
-    if (dev->rx_used + len > dev->rx_cap) {
+    /* Written as a subtraction, not `rx_used + len > rx_cap`: the sum cannot
+     * wrap size_t and silently pass. */
+    if (len > dev->rx_cap - dev->rx_used) {
         err = ESP_ERR_NO_MEM;
     } else {
         rx_push(dev, data, len);
@@ -373,21 +375,6 @@ xymodem_err_t xymodem_error(xymodem_handle_t handle)
     xymodem_err_t err = xymodem_core_error(&handle->core);
     XY_UNLOCK(handle);
     return err;
-}
-
-xymodem_role_t xymodem_role(xymodem_handle_t handle)
-{
-    if (!xy_live(handle)) {
-        return XYMODEM_ROLE_NONE;
-    }
-    XY_LOCK(handle);
-    if (handle->magic != XY_MAGIC) {
-        XY_UNLOCK(handle);
-        return XYMODEM_ROLE_NONE;
-    }
-    xymodem_role_t role = xymodem_core_role(&handle->core);
-    XY_UNLOCK(handle);
-    return role;
 }
 
 esp_err_t xymodem_cancel(xymodem_handle_t handle)

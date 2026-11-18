@@ -25,10 +25,8 @@ ABI were cleaned up together rather than carrying compatibility shims.
   and does not ACK or send EOT afterwards. Best-effort CAN uses a raw emit so
   an I/O failure cannot recurse.
 - **Core C ABI callbacks return `int` (0 = success).** `data_source` writes
-  the byte count through an out-parameter. The IDF wrapper no longer uses a
-  delayed `io_failed` flag / `xymodem_core_fail_io()` after the engine has
-  already moved on (the EOT-then-CAN path is gone). `xymodem_core_fail_io()`
-  remains for embedders that detect a late failure themselves.
+  the byte count through an out-parameter. A failing callback aborts the
+  engine inline (CAN + `XYMODEM_ERR_IO`); there is no separate report path.
 
 ### Design
 
@@ -53,14 +51,21 @@ ABI were cleaned up together rather than carrying compatibility shims.
 ### Breaking C ABI changes
 
 - **C enums** (`xymodem_err_t`, `xymodem_status_t`, `xymodem_event_t`,
-  `xymodem_role_t`, `xymodem_check_mode_t`) replace the old `#define` soup.
+  `xymodem_check_mode_t`) replace the old `#define` soup.
   Numeric values are unchanged except `XYMODEM_ST_INVALID = 5` (NULL /
   deleted handle; `xymodem_status()` no longer returns
   `XYMODEM_ERR_INVALID_ARG`). `start_send` still infers classic / named
   file / batch terminator from `file` (`NULL`, a name, or `""`) — that
   empty pathname is the YMODEM wire token, not a protocol mode.
-- **`xymodem_role()` / `xymodem_core_role()`.** `NONE` when idle or
-  terminal; the application still chooses the next `start_*`.
+- **Removed everything the application can compose from what it already
+  has** (reviewed against the getc/putc-shaped APIs of the Python, Rust, Go
+  and npm XMODEM libraries): `xymodem_role()` — the direction is the app's
+  own `start_*` choice; `XYMODEM_EV_HANDSHAKE` and `XYMODEM_EV_BLOCK` — the
+  first payload callback call and the completion events cover both;
+  `xymodem_core_fail_io()` — every failure source is a callback, which aborts
+  inline; `xymodem_core_state_size()` — `sizeof(xymodem_core_t)` is in the
+  header. Progress is a one-line counter in `data_sink`/`data_source`
+  (see the guide's recipe), not an engine feature.
 - **Handle magic.** `xymodem_delete()` clears a `'XYMD'` magic so a
   subsequent call returns `ESP_ERR_INVALID_ARG` / `XYMODEM_ST_INVALID`
   instead of taking a freed mutex. Callers must still stop the ISR and
@@ -96,9 +101,14 @@ ABI were cleaned up together rather than carrying compatibility shims.
   Callbacks still must not re-enter the driver (the instance lock is held).
 
 - Sender in `WaitAck` / `WaitEotAck` / `HeaderWaitAck` treats `'C'` like NAK
-  (CRC-mode receivers re-request that way). A late NAK/`'C'` after the
-  sender already completed on EOT retries still emits EOT, matching the
-  extra-EOT ACK on the receive side.
+  (CRC-mode receivers re-request that way). A NAK/`'C'` that arrives after the
+  sender session already completed is left unanswered: in a YMODEM batch that
+  `'C'` is Forsberg figure 3's request for the NEXT file header (the receiver
+  sends it immediately after ACKing EOT, before the application can start the
+  next session), and an EOT answer corrupted the batch handshake. The receiver
+  re-requests on its own timeout, and the next `start_send()` session answers
+  that fresh request. A late EOT aimed at a completed receive session is still
+  ACKed, matching the extra-EOT ACK on the send side.
 - `SendSession::started` is set when a peer byte arrives, not when we emit
   the first block. Handshake silence after block 0 still counts retries
   (no infinite `WaitAgain`).
@@ -127,12 +137,8 @@ ABI were cleaned up together rather than carrying compatibility shims.
 - Distinguish a refused block-0 header (`XYMODEM_ERR_FILE_REJECTED`, -7) from
   a broken I/O callback (`XYMODEM_ERR_IO`, -6); local cancellation gets
   `XYMODEM_ERR_CANCEL_BY_LOCAL` (-8).
-- New `xymodem_core_fail_io()` FFI entry point aborts with
-  `Failure::Local(LocalReason::Io)`, so `on_event` and `xymodem_error()` now
-  report the same code. A late callback failure can no longer be reported as a
-  successful transfer.
-- Shrink `xymodem_core_t` from 4096 to 2560 bytes (320 `uint64_t` words),
-  saving ~1.5 KiB of RAM per handle. Compile-time size/alignment assertions
+- Shrink `xymodem_core_t` from 4096 to 2240 bytes (280 `uint64_t` words),
+  saving ~1.8 KiB of RAM per handle. Compile-time size/alignment assertions
   replace the old runtime size check.
 - Panic handler calls newlib's `abort()` (ESP-IDF panic + reboot) instead of
   hanging the chip in an infinite loop.
@@ -153,6 +159,12 @@ ABI were cleaned up together rather than carrying compatibility shims.
   block 0 being re-requested with NAK, `Busy` on an in-flight session, and
   the peer/local cancel distinction. Cargo CI discovers this component via
   `ci/cargo/run.sh` (see `.github/workflows/cargo_tests.yml`).
+- New `examples/xymodem_ota`: serial firmware update over YMODEM on a UHCI
+  (UART DMA) pipe — the receive path runs in the UHCI ISR (`CONFIG_UHCI_ISR_CACHE_SAFE=y`,
+  IRAM callback chain) while `esp_ota_write` blocks in `data_sink`; the batch
+  carries the image plus its sha256, verified against the flashed bytes
+  before the boot partition is switched. Host peer: `sb` or the `ymodem`
+  Python package; board-level pytest included.
 - Programming guide rewritten for beginners: XMODEM and YMODEM are
   separate case-driven chapters (`docs/src/xmodem.md`, `docs/src/ymodem.md`)
   with sequence diagrams, entered from `docs/src/index.md`. The 0.2

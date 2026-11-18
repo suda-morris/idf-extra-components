@@ -16,13 +16,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Number of `uint64_t` words in `xymodem_core_t::_storage`. 320 words = 2560
-// bytes. Measured `Engine<CIo>` is 2312 B on a 64-bit host and 2272 B on
-// riscv32imc, so this leaves ~250 B of headroom and saves 1.5 KiB of RAM per
-// handle versus the original 512 words. The static assertions below turn any
-// future growth into a build error, so the headroom is convenience, not a
-// safety net. Exported as a C #define so the struct's array size resolves.
-#define XYMODEM_CORE_STATE_WORDS 320
+// Number of `uint64_t` words in `xymodem_core_t::_storage`. 280 words = 2240
+// bytes. Measured `Engine<CIo>` is 2168 B on a 64-bit host and 2128 B on
+// riscv32imc, so this leaves ~70 B of headroom on the larger variant and
+// saves ~1.8 KiB of RAM per handle versus the original 512 words. The static
+// assertions below turn any future growth into a build error, so the
+// headroom is convenience, not a safety net. Exported as a C #define so the
+// struct's array size resolves.
+#define XYMODEM_CORE_STATE_WORDS 280
 
 // Return / failure codes of every `xymodem_core_*` function that reports an
 // error. Status and role use their own enums.
@@ -61,17 +62,14 @@ typedef int32_t xymodem_err_t;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
-// Lifecycle events delivered through `on_event`. 1-based so 0 can serve as a
-// "no event" sentinel in C.
+// Lifecycle events delivered through `on_event`. Gaps in the numbering are
+// deleted events (handshake, per-block) whose information the application
+// derives from its own data_sink / data_source / on_file callbacks.
 enum xymodem_event_t
 #if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
   : uint32_t
 #endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
-  // Handshake negotiated. `arg` is unused (XYMODEM_OK).
-  XYMODEM_EV_HANDSHAKE = 1,
-  // A block was accepted (receiver) or acknowledged (sender). `arg` = XYMODEM_OK.
-  XYMODEM_EV_BLOCK = 2,
   // Transfer completed. `arg` = XYMODEM_OK.
   XYMODEM_EV_COMPLETE = 3,
   // Transfer failed. `arg` carries a negative XYMODEM_ERR_* code.
@@ -113,29 +111,6 @@ enum xymodem_status_t
 typedef enum xymodem_status_t xymodem_status_t;
 #else
 typedef int32_t xymodem_status_t;
-#endif // __STDC_VERSION__ >= 202311L
-#endif // __cplusplus
-
-// Which side of the wire the engine is currently playing. XYMODEM_ROLE_NONE
-// when idle or terminal: after Complete the application chooses the next
-// `start_*`.
-enum xymodem_role_t
-#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
-  : int32_t
-#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
- {
-  // Idle, complete, failed, or a NULL pointer.
-  XYMODEM_ROLE_NONE = 0,
-  // A receive session is in flight.
-  XYMODEM_ROLE_RECV = 1,
-  // A send session is in flight.
-  XYMODEM_ROLE_SEND = 2,
-};
-#ifndef __cplusplus
-#if __STDC_VERSION__ >= 202311L
-typedef enum xymodem_role_t xymodem_role_t;
-#else
-typedef int32_t xymodem_role_t;
 #endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
@@ -230,7 +205,10 @@ typedef struct xymodem_core_io_t {
   // with classic whole-block semantics). If NULL, every file is accepted.
   bool (*on_file)(void *user, const char *name, uint64_t size, bool has_size);
   // Optional lifecycle notification. `event` is an XYMODEM_EV_* value; on
-  // XYMODEM_EV_FAILED, `arg` is a negative XYMODEM_ERR_* code.
+  // XYMODEM_EV_FAILED, `arg` is a negative XYMODEM_ERR_* code. Progress
+  // is not an event parameter: count the bytes in your own data_sink /
+  // data_source callbacks (they fire exactly once per accepted/pulled
+  // chunk) and reset the counter in on_file for per-file progress.
   void (*on_event)(void *user, xymodem_event_t event, xymodem_err_t arg);
   // Opaque user pointer passed back to every callback.
   void *user;
@@ -249,18 +227,14 @@ typedef struct xymodem_core_file_info_t {
 extern "C" {
 #endif // __cplusplus
 
-// Return `sizeof(xymodem_core_t)` in bytes. Useful when allocating the state
-// dynamically; a stack/static `xymodem_core_t` needs none of this.
-size_t xymodem_core_state_size(void);
-
 // Initialize an idle engine. No session runs yet: nothing is emitted, no
 // timer is armed, received bytes are ignored. Call
 // `xymodem_core_start_recv()` or `xymodem_core_start_send()` to open one.
 //
 // Returns XYMODEM_OK, or XYMODEM_ERR_INVALID_ARG on a NULL pointer, an
-// invalid config, or a callback table without `emit`. The buffer must be at
-// least `xymodem_core_state_size()` bytes and 8-byte aligned; it is left
-// untouched on error.
+// invalid config, or a callback table without `emit`. The buffer is a
+// `xymodem_core_t` (whose size is visible in this header) and must be
+// 8-byte aligned; it is left untouched on error.
 //
 // # Safety
 // `core` must point to writable, 8-aligned memory of `sizeof(xymodem_core_t)`
@@ -343,13 +317,6 @@ xymodem_err_t xymodem_core_poll(struct xymodem_core_t *core, uint32_t now_ms);
 // `core` must be initialized.
 xymodem_status_t xymodem_core_status(const struct xymodem_core_t *core);
 
-// Current role: XYMODEM_ROLE_RECV, XYMODEM_ROLE_SEND, or XYMODEM_ROLE_NONE
-// when idle / terminal / NULL.
-//
-// # Safety
-// `core` must be initialized.
-xymodem_role_t xymodem_core_role(const struct xymodem_core_t *core);
-
 // The failure reason (a negative XYMODEM_ERR_* code) when status is
 // XYMODEM_ST_FAILED; XYMODEM_OK otherwise. Returns XYMODEM_ERR_INVALID_ARG
 // for a NULL pointer.
@@ -368,21 +335,6 @@ xymodem_err_t xymodem_core_error(const struct xymodem_core_t *core);
 // # Safety
 // `core` must be initialized.
 xymodem_err_t xymodem_core_cancel(struct xymodem_core_t *core);
-
-// Report that an I/O callback (emit/data_sink/data_source) failed. Aborts the
-// transfer with XYMODEM_ERR_IO, emitting CAN and reporting the SAME code
-// through on_event and xymodem_core_error. A no-op when idle or already
-// failed.
-//
-// For C embedders of this ABI that detect a late failure *outside* a
-// callback. The IDF wrapper does not call this: fallible `Io` already
-// aborts inside emit / data_sink / data_source.
-//
-// Returns XYMODEM_OK, or XYMODEM_ERR_INVALID_ARG for a NULL pointer.
-//
-// # Safety
-// `core` must be initialized.
-xymodem_err_t xymodem_core_fail_io(struct xymodem_core_t *core);
 
 #ifdef __cplusplus
 }  // extern "C"

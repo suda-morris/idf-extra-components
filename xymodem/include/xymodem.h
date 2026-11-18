@@ -126,7 +126,10 @@ typedef struct {
  *                   XYMODEM_EV_COMPLETE still marks the whole batch / classic
  *                   transfer.
  * @param[in] arg    On XYMODEM_EV_FAILED, a negative XYMODEM_ERR_* code;
- *                   0 otherwise.
+ *                   0 otherwise. Progress is not an event parameter: count
+ *                   the bytes in your own data_sink / data_source callbacks
+ *                   (they fire exactly once per accepted/pulled chunk) and
+ *                   reset the counter in on_file for per-file progress.
  */
 typedef void (*xymodem_event_fn_t)(xymodem_handle_t handle, void *ctx, xymodem_event_t event, xymodem_err_t arg);
 
@@ -337,12 +340,6 @@ xymodem_status_t xymodem_status(xymodem_handle_t handle);
  *        XYMODEM_ERR_INVALID_ARG for a NULL / deleted handle.
  */
 xymodem_err_t xymodem_error(xymodem_handle_t handle);
-
-/**
- * @brief Current role: XYMODEM_ROLE_RECV, XYMODEM_ROLE_SEND, or
- *        XYMODEM_ROLE_NONE when idle, terminal, or the handle is not live.
- */
-xymodem_role_t xymodem_role(xymodem_handle_t handle);
 
 /**
  * @brief Abort a transfer from the application side.
